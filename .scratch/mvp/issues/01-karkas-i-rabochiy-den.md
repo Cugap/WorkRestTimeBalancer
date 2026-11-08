@@ -19,7 +19,7 @@
 - Сделано: `core/` — отдельный пакет `work_rest_core` без импортов Flutter; `app/` — Flutter-оболочка с платформами Android, iOS и Windows.
 - Ядро: `WorkDayEngine` с командами `startWorkDay`, `pause`, `resume`, `finishWorkDay` и запросом `snapshot(now)`. Снимок отдаёт фазу, доступные команды, отработанное время, остаток рабочего окна и журнал событий, поэтому экран ничего не вычисляет.
 - Конец рабочего окна закрывает день внутри ядра при ближайшем обращении к движку: автоматическое завершение пишется в журнал как `workWindowEnded` ровно один раз.
-- Экран `app/lib/src/work_day_screen.dart` строит кнопки по `availableCommands` и показывает отказ ядра, если команда пришла не в ту фазу.
-- Тесты: `core/test/work_day_test.dart` (фейковые часы, без реальных таймеров) и сценарная таблица `core/test/work_day_scenario_test.dart` — паттерн для следующих тикетов; `app/test/work_day_screen_test.dart` проверяет, что кнопки соответствуют фазе.
-- Проверено: `dart analyze`, `dart test` (19 тестов), `flutter analyze`, `flutter test` (4 теста), `flutter build bundle`.
+- Экран `app/lib/src/work_day_screen.dart` строит кнопки по `availableCommands` и показывает отказ ядра, если команда пришла не в ту фазу. Оболочка передаёт ядру монотонное время (`MonotonicClock`: настенное время на старте плюс `Stopwatch`), поэтому перевод системных часов не сдвигает ритм.
+- Тесты: `core/test/work_day_test.dart` (фейковые часы, без реальных таймеров) и сценарная таблица `core/test/work_day_scenario_test.dart` — паттерн для следующих тикетов; `app/test/work_day_screen_test.dart` проверяет только связку «фаза → доступные кнопки» по ключам, без привязки к текстам.
+- Проверено: `dart analyze`, `dart test` (21 тест), `flutter analyze`, `flutter test` (2 теста), `flutter build bundle`.
 - Не проверено: нативные сборки. На этой машине нет Android SDK, нет macOS с Xcode, а у Visual Studio отсутствует workload «Desktop development with C++», поэтому `flutter build windows` и `flutter build apk` падают на проверке тулчейна, не на коде.

@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 
+import 'src/clock.dart';
 import 'src/work_day_screen.dart';
 
 void main() => runApp(WorkRestApp());
 
 class WorkRestApp extends StatelessWidget {
-  WorkRestApp({super.key, WorkDayEngine? engine, this.clock = DateTime.now})
-    : engine = engine ?? WorkDayEngine();
+  WorkRestApp({super.key, WorkDayEngine? engine, Clock? clock})
+    : engine = engine ?? WorkDayEngine(),
+      clock = clock ?? MonotonicClock();
 
   final WorkDayEngine engine;
-  final DateTime Function() clock;
+  final Clock clock;
 
   @override
   Widget build(BuildContext context) {

@@ -2,108 +2,82 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 import 'package:work_rest_time_balancer/main.dart';
+import 'package:work_rest_time_balancer/src/clock.dart';
+
+/// Часы, которые двигаются только по команде теста.
+class FakeClock implements Clock {
+  FakeClock(this._now);
+
+  DateTime _now;
+
+  @override
+  DateTime now() => _now;
+
+  void advance(Duration delta) => _now = _now.add(delta);
+}
 
 void main() {
-  late DateTime now;
+  late FakeClock clock;
   late WorkDayEngine engine;
 
   setUp(() {
-    now = DateTime(2026, 3, 4, 9);
+    clock = FakeClock(DateTime(2026, 3, 4, 9));
     engine = WorkDayEngine();
   });
 
+  Finder phase(WorkDayPhase value) =>
+      find.byKey(ValueKey('phase-${value.name}'));
+  Finder command(WorkDayCommand value) =>
+      find.byKey(ValueKey('command-${value.name}'));
+
   Future<void> pumpApp(WidgetTester tester) async {
-    await tester.pumpWidget(WorkRestApp(engine: engine, clock: () => now));
+    await tester.pumpWidget(WorkRestApp(engine: engine, clock: clock));
   }
 
-  Future<void> tapCommand(WidgetTester tester, String label) async {
-    await tester.tap(find.widgetWithText(FilledButton, label));
+  Future<void> tapCommand(WidgetTester tester, WorkDayCommand value) async {
+    await tester.tap(command(value));
     await tester.pump();
   }
 
-  testWidgets(
-    'экран показывает фазу и остаток окна, кнопки соответствуют фазе',
-    (tester) async {
-      await pumpApp(tester);
-
-      expect(find.text('Рабочий день не начат'), findsOneWidget);
-      expect(find.text('До конца рабочего окна: 9 ч'), findsOneWidget);
-      expect(find.text('Отработано: 0 мин'), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Начать'), findsOneWidget);
-      expect(find.text('Пауза'), findsNothing);
-
-      now = now.add(const Duration(minutes: 10));
-      await tapCommand(tester, 'Начать');
-
-      expect(find.text('Рабочий день идёт'), findsOneWidget);
-      expect(find.text('Отработано: 0 мин'), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Пауза'), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Завершить'), findsOneWidget);
-      expect(find.text('Начать'), findsNothing);
-
-      now = now.add(const Duration(minutes: 10));
-      await tester.pump(const Duration(seconds: 1));
-
-      expect(find.text('Отработано: 10 мин'), findsOneWidget);
-      expect(find.text('До конца рабочего окна: 8 ч 40 мин'), findsOneWidget);
-    },
-  );
-
-  testWidgets('пауза замораживает счёт, продолжение возвращает ритм', (
-    tester,
-  ) async {
+  testWidgets('кнопки экрана соответствуют фазе ядра', (tester) async {
     await pumpApp(tester);
-    await tapCommand(tester, 'Начать');
 
-    now = now.add(const Duration(minutes: 30));
-    await tapCommand(tester, 'Пауза');
+    expect(phase(WorkDayPhase.notStarted), findsOneWidget);
+    expect(command(WorkDayCommand.start), findsOneWidget);
+    expect(command(WorkDayCommand.pause), findsNothing);
 
-    expect(find.text('Рабочий день на паузе'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Продолжить'), findsOneWidget);
+    clock.advance(const Duration(minutes: 10));
+    await tapCommand(tester, WorkDayCommand.start);
 
-    now = now.add(const Duration(hours: 1));
-    await tester.pump(const Duration(seconds: 1));
+    expect(phase(WorkDayPhase.running), findsOneWidget);
+    expect(command(WorkDayCommand.pause), findsOneWidget);
+    expect(command(WorkDayCommand.finish), findsOneWidget);
+    expect(command(WorkDayCommand.start), findsNothing);
 
-    expect(find.text('Отработано: 30 мин'), findsOneWidget);
+    await tapCommand(tester, WorkDayCommand.pause);
 
-    await tapCommand(tester, 'Продолжить');
-    expect(find.text('Рабочий день идёт'), findsOneWidget);
+    expect(phase(WorkDayPhase.paused), findsOneWidget);
+    expect(command(WorkDayCommand.resume), findsOneWidget);
+    expect(command(WorkDayCommand.finish), findsOneWidget);
+
+    await tapCommand(tester, WorkDayCommand.resume);
+    expect(phase(WorkDayPhase.running), findsOneWidget);
+
+    await tapCommand(tester, WorkDayCommand.finish);
+    expect(phase(WorkDayPhase.finished), findsOneWidget);
+    expect(command(WorkDayCommand.start), findsOneWidget);
   });
 
-  testWidgets('после ручного завершения можно начать новый рабочий день', (
+  testWidgets('тик экрана завершает день на конце рабочего окна', (
     tester,
   ) async {
     await pumpApp(tester);
-    await tapCommand(tester, 'Начать');
-    await tapCommand(tester, 'Завершить');
+    await tapCommand(tester, WorkDayCommand.start);
 
-    expect(find.text('Рабочий день завершён'), findsOneWidget);
-    expect(
-      find.widgetWithText(FilledButton, 'Начать новый рабочий день'),
-      findsOneWidget,
-    );
-
-    now = now.add(const Duration(minutes: 5));
-    await tapCommand(tester, 'Начать новый рабочий день');
-
-    expect(find.text('Рабочий день идёт'), findsOneWidget);
-    expect(find.text('Отработано: 0 мин'), findsOneWidget);
-  });
-
-  testWidgets('в конце рабочего окна день завершается без команд', (
-    tester,
-  ) async {
-    await pumpApp(tester);
-    await tapCommand(tester, 'Начать');
-
-    now = DateTime(2026, 3, 4, 18, 30);
+    clock.advance(const Duration(hours: 9));
     await tester.pump(const Duration(seconds: 1));
 
-    expect(find.text('Рабочий день завершён'), findsOneWidget);
-    expect(find.text('До конца рабочего окна: 0 мин'), findsOneWidget);
-    expect(
-      find.widgetWithText(FilledButton, 'Начать новый рабочий день'),
-      findsNothing,
-    );
+    expect(phase(WorkDayPhase.finished), findsOneWidget);
+    expect(command(WorkDayCommand.start), findsNothing);
   });
 }

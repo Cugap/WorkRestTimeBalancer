@@ -5,6 +5,8 @@ import 'work_window.dart';
 
 /// Движок рабочего дня. Не читает системное время: каждый вызов получает момент
 /// от оболочки, поэтому поведение полностью воспроизводимо в тестах.
+/// Оболочка обязана передавать неубывающее время — тогда перевод системных
+/// часов назад не сдвигает ритм.
 final class WorkDayEngine {
   WorkDayEngine({this.window = WorkWindow.standard});
 
@@ -168,7 +170,10 @@ final class WorkDayEngine {
   }
 
   Duration _remainingInWorkWindow(DateTime now) {
-    final endsAt = _workWindowEndsAt ?? window.endOn(now);
+    final endsAt = switch (_phase) {
+      WorkDayPhase.running || WorkDayPhase.paused => _workWindowEndsAt!,
+      WorkDayPhase.notStarted || WorkDayPhase.finished => window.endOn(now),
+    };
     final remaining = endsAt.difference(now);
     return remaining.isNegative ? Duration.zero : remaining;
   }

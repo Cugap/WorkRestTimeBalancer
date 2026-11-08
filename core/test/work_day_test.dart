@@ -240,6 +240,34 @@ void main() {
     });
   });
 
+  group('следующий календарный день', () {
+    test('остаток окна считается от нового дня, а не от вчерашнего', () {
+      engine.startWorkDay(clock.now);
+      clock.advance(const Duration(hours: 1));
+      engine.finishWorkDay(clock.now);
+      clock.advance(const Duration(hours: 23));
+
+      final snapshot = engine.snapshot(clock.now);
+
+      expect(snapshot.phase, WorkDayPhase.finished);
+      expect(snapshot.remainingInWorkWindow, const Duration(hours: 9));
+      expect(snapshot.availableCommands, [WorkDayCommand.start]);
+    });
+
+    test(
+      'день, закрытый концом окна, на следующий день показывает новое окно',
+      () {
+        engine.startWorkDay(clock.now);
+        clock.advance(const Duration(hours: 24));
+
+        final snapshot = engine.snapshot(clock.now);
+
+        expect(snapshot.phase, WorkDayPhase.finished);
+        expect(snapshot.remainingInWorkWindow, const Duration(hours: 9));
+      },
+    );
+  });
+
   group('ручное завершение', () {
     test('завершение фиксирует отработанное время и фазу', () {
       engine.startWorkDay(clock.now);

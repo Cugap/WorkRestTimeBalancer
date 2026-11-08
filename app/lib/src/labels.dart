@@ -1,7 +1,7 @@
 import 'package:work_rest_core/work_rest_core.dart';
 
 /// Форматирование для экрана: превращает готовые значения ядра в текст.
-String formatSpan(Duration duration) {
+String formatHoursMinutes(Duration duration) {
   final hours = duration.inHours;
   final minutes = duration.inMinutes.remainder(60);
   if (hours == 0) {

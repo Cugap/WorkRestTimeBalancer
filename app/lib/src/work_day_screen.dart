@@ -3,18 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 
+import 'clock.dart';
 import 'labels.dart';
 
 /// Главный экран: показывает снимок ядра и отправляет команды.
 class WorkDayScreen extends StatefulWidget {
-  const WorkDayScreen({
-    super.key,
-    required this.engine,
-    this.clock = DateTime.now,
-  });
+  const WorkDayScreen({super.key, required this.engine, required this.clock});
 
   final WorkDayEngine engine;
-  final DateTime Function() clock;
+  final Clock clock;
 
   @override
   State<WorkDayScreen> createState() => _WorkDayScreenState();
@@ -28,7 +25,7 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
   @override
   void initState() {
     super.initState();
-    _snapshot = widget.engine.snapshot(widget.clock());
+    _snapshot = widget.engine.snapshot(widget.clock.now());
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
   }
 
@@ -39,12 +36,12 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
   }
 
   void _refresh() {
-    final snapshot = widget.engine.snapshot(widget.clock());
+    final snapshot = widget.engine.snapshot(widget.clock.now());
     setState(() => _snapshot = snapshot);
   }
 
-  void _run(WorkDayCommand command) {
-    final now = widget.clock();
+  void _dispatchCommand(WorkDayCommand command) {
+    final now = widget.clock.now();
     final result = switch (command) {
       WorkDayCommand.start => widget.engine.startWorkDay(now),
       WorkDayCommand.pause => widget.engine.pause(now),
@@ -77,18 +74,20 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
             children: [
               Text(
                 phaseTitle(snapshot.phase),
+                key: ValueKey('phase-${snapshot.phase.name}'),
                 style: theme.textTheme.headlineMedium,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
               Text(
                 'До конца рабочего окна: '
-                '${formatSpan(snapshot.remainingInWorkWindow)}',
+                '${formatHoursMinutes(snapshot.remainingInWorkWindow)}',
                 style: theme.textTheme.bodyLarge,
               ),
               const SizedBox(height: 8),
               Text(
-                'Отработано: ${formatSpan(snapshot.worked)}',
+                'Отработано: '
+                '${formatHoursMinutes(snapshot.worked)}',
                 style: theme.textTheme.bodyLarge,
               ),
               const SizedBox(height: 32),
@@ -99,7 +98,8 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
                 children: [
                   for (final command in snapshot.availableCommands)
                     FilledButton(
-                      onPressed: () => _run(command),
+                      key: ValueKey('command-${command.name}'),
+                      onPressed: () => _dispatchCommand(command),
                       child: Text(commandLabel(command, snapshot.phase)),
                     ),
                 ],
