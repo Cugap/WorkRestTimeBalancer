@@ -111,6 +111,16 @@ class _RestScreenState extends State<RestScreen> {
                   style: theme.textTheme.titleMedium,
                   textAlign: TextAlign.center,
                 ),
+                if (!resting && snapshot.restDuration != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Длительность: '
+                    '${formatHoursMinutes(snapshot.restDuration!)}',
+                    key: const ValueKey('rest-screen-duration'),
+                    style: theme.textTheme.bodyLarge,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
                 const SizedBox(height: 12),
               ],
               if (resting) ...[
