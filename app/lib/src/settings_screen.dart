@@ -25,10 +25,19 @@ enum _Field {
 /// обратно в движок: диапазоны и тексты отказов — правила ядра, экран их не
 /// повторяет и сам ничего не вычисляет.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.engine, required this.clock});
+  const SettingsScreen({
+    super.key,
+    required this.engine,
+    required this.clock,
+    this.onStateChanged,
+  });
 
   final WorkDayEngine engine;
   final Clock clock;
+
+  /// Вызывается после принятого изменения настроек, чтобы оболочка сохранила
+  /// документ ядра.
+  final VoidCallback? onStateChanged;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -134,6 +143,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
     switch (widget.engine.updateSettings(now, candidate)) {
       case WorkDayCommandAccepted():
+        widget.onStateChanged?.call();
         Navigator.of(context).pop();
       case WorkDayCommandRejected(:final reason):
         setState(() {
@@ -147,6 +157,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final now = widget.clock.now();
     switch (widget.engine.resetSettings(now)) {
       case WorkDayCommandAccepted():
+        widget.onStateChanged?.call();
         Navigator.of(context).pop();
       case WorkDayCommandRejected(:final reason):
         setState(() {

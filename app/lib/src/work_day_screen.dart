@@ -10,10 +10,19 @@ import 'settings_screen.dart';
 
 /// Главный экран: показывает снимок ядра и отправляет команды.
 class WorkDayScreen extends StatefulWidget {
-  const WorkDayScreen({super.key, required this.engine, required this.clock});
+  const WorkDayScreen({
+    super.key,
+    required this.engine,
+    required this.clock,
+    this.onStateChanged,
+  });
 
   final WorkDayEngine engine;
   final Clock clock;
+
+  /// Вызывается после каждого принятого изменения состояния: оболочка
+  /// сохраняет документ ядра. Экран о хранилище ничего не знает.
+  final VoidCallback? onStateChanged;
 
   @override
   State<WorkDayScreen> createState() => _WorkDayScreenState();
@@ -28,8 +37,13 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
   void initState() {
     super.initState();
     _snapshot = widget.engine.snapshot(widget.clock.now());
+    _seenEvents = _snapshot.events.length;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
   }
+
+  /// Сколько событий журнала уже сохранено: тик, дописавший событие, просит
+  /// оболочку сохранить документ.
+  late int _seenEvents;
 
   @override
   void dispose() {
@@ -39,6 +53,10 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
 
   void _refresh() {
     final snapshot = widget.engine.snapshot(widget.clock.now());
+    if (snapshot.events.length != _seenEvents) {
+      _seenEvents = snapshot.events.length;
+      widget.onStateChanged?.call();
+    }
     setState(() => _snapshot = snapshot);
   }
 
@@ -62,13 +80,21 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
         WorkDayCommandRejected(:final reason) => reason,
       };
       _snapshot = widget.engine.snapshot(now);
+      _seenEvents = _snapshot.events.length;
     });
+    if (result is WorkDayCommandAccepted) {
+      widget.onStateChanged?.call();
+    }
   }
 
   Future<void> _openRestScreen() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => RestScreen(engine: widget.engine, clock: widget.clock),
+        builder: (_) => RestScreen(
+          engine: widget.engine,
+          clock: widget.clock,
+          onStateChanged: widget.onStateChanged,
+        ),
       ),
     );
     if (mounted) {
@@ -79,8 +105,11 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
   Future<void> _openSettingsScreen() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            SettingsScreen(engine: widget.engine, clock: widget.clock),
+        builder: (_) => SettingsScreen(
+          engine: widget.engine,
+          clock: widget.clock,
+          onStateChanged: widget.onStateChanged,
+        ),
       ),
     );
     if (mounted) {

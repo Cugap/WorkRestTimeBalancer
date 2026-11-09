@@ -58,7 +58,11 @@ void main() {
       ]);
       expect(
         postponed.events.last,
-        WorkDayEvent.restPostponed(_at(9, 25), RestKind.short),
+        WorkDayEvent.restPostponed(
+          _at(9, 25),
+          RestKind.short,
+          plannedDuration: const Duration(minutes: 3),
+        ),
       );
 
       final countdown = engine.snapshot(_at(9, 29, 59));
@@ -77,8 +81,16 @@ void main() {
           (event) => event.type == WorkDayEventType.restOffered,
         ),
         [
-          WorkDayEvent.restOffered(_at(9, 25), RestKind.short),
-          WorkDayEvent.restOffered(_at(9, 30), RestKind.short),
+          WorkDayEvent.restOffered(
+            _at(9, 25),
+            RestKind.short,
+            plannedDuration: const Duration(minutes: 3),
+          ),
+          WorkDayEvent.restOffered(
+            _at(9, 30),
+            RestKind.short,
+            plannedDuration: const Duration(minutes: 3),
+          ),
         ],
       );
     });
@@ -132,7 +144,11 @@ void main() {
       );
       expect(
         after.events.last,
-        WorkDayEvent.restOffered(_at(9, 35), RestKind.short),
+        WorkDayEvent.restOffered(
+          _at(9, 35),
+          RestKind.short,
+          plannedDuration: const Duration(minutes: 3),
+        ),
       );
     });
   });
@@ -301,8 +317,16 @@ void main() {
       expect(closed.remainingPostponements, 2);
       expect(closed.events, [
         WorkDayEvent.started(_at(17, 30)),
-        WorkDayEvent.restOffered(_at(17, 55), RestKind.short),
-        WorkDayEvent.restPostponed(_at(17, 55), RestKind.short),
+        WorkDayEvent.restOffered(
+          _at(17, 55),
+          RestKind.short,
+          plannedDuration: const Duration(minutes: 3),
+        ),
+        WorkDayEvent.restPostponed(
+          _at(17, 55),
+          RestKind.short,
+          plannedDuration: const Duration(minutes: 3),
+        ),
         WorkDayEvent.finished(_at(18), WorkDayFinishReason.workWindowEnded),
       ]);
       expect(
