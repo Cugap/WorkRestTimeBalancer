@@ -2,6 +2,8 @@
 library;
 
 export 'src/clock_time.dart';
+export 'src/document_file_gateway.dart';
+export 'src/document_transfer.dart';
 export 'src/exercise.dart';
 export 'src/exercise_catalog.dart';
 export 'src/local_document_store.dart';

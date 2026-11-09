@@ -12,6 +12,12 @@ enum WorkDayEventType {
   restPostponed,
   restFinished,
   settingsChanged,
+
+  /// Настройки и журнал сохранены в файл переноса.
+  dataExported,
+
+  /// Настройки и журнал заменены документом из файла переноса.
+  dataImported,
 }
 
 /// Причина завершения рабочего дня.
@@ -108,6 +114,22 @@ final class WorkDayEvent {
 
   const WorkDayEvent.settingsChanged(this.at)
     : type = WorkDayEventType.settingsChanged,
+      finishReason = null,
+      restKind = null,
+      restFinishReason = null,
+      plannedDuration = null,
+      actualDuration = null;
+
+  const WorkDayEvent.dataExported(this.at)
+    : type = WorkDayEventType.dataExported,
+      finishReason = null,
+      restKind = null,
+      restFinishReason = null,
+      plannedDuration = null,
+      actualDuration = null;
+
+  const WorkDayEvent.dataImported(this.at)
+    : type = WorkDayEventType.dataImported,
       finishReason = null,
       restKind = null,
       restFinishReason = null,

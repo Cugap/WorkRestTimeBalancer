@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 
 import 'src/clock.dart';
+import 'src/file_picker_document_gateway.dart';
 import 'src/persistence.dart';
 import 'src/preferences_document_store.dart';
 import 'src/work_day_screen.dart';
@@ -22,10 +23,14 @@ class WorkRestApp extends StatefulWidget {
     WorkDayEngine? engine,
     WorkDaySession? session,
     this.clock,
+    this.fileGateway,
   }) : session = session ?? WorkDaySession.inMemory(engine);
 
   final WorkDaySession session;
   final Clock? clock;
+
+  /// Файловый порт экспорта и импорта; тесты подменяют его фейком.
+  final DocumentFileGateway? fileGateway;
 
   @override
   State<WorkRestApp> createState() => _WorkRestAppState();
@@ -34,12 +39,17 @@ class WorkRestApp extends StatefulWidget {
 class _WorkRestAppState extends State<WorkRestApp> {
   final Clock _fallbackClock = MonotonicClock();
   late final AppLifecycleListener _lifecycle;
+  late final DocumentTransfer _transfer;
 
   Clock get _clock => widget.clock ?? _fallbackClock;
 
   @override
   void initState() {
     super.initState();
+    _transfer = DocumentTransfer(
+      engine: widget.session.engine,
+      gateway: widget.fileGateway ?? const FilePickerDocumentGateway(),
+    );
     // Уход в фон — последняя точка, где состояние ещё можно записать.
     _lifecycle = AppLifecycleListener(onPause: _save, onHide: _save);
   }
@@ -60,6 +70,7 @@ class _WorkRestAppState extends State<WorkRestApp> {
       home: WorkDayScreen(
         engine: widget.session.engine,
         clock: _clock,
+        transfer: _transfer,
         onStateChanged: _save,
       ),
     );

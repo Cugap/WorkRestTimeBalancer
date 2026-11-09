@@ -14,11 +14,15 @@ class WorkDayScreen extends StatefulWidget {
     super.key,
     required this.engine,
     required this.clock,
+    required this.transfer,
     this.onStateChanged,
   });
 
   final WorkDayEngine engine;
   final Clock clock;
+
+  /// Экспорт и импорт документа; экран настроек открывает их оттуда.
+  final DocumentTransfer transfer;
 
   /// Вызывается после каждого принятого изменения состояния: оболочка
   /// сохраняет документ ядра. Экран о хранилище ничего не знает.
@@ -108,6 +112,7 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
         builder: (_) => SettingsScreen(
           engine: widget.engine,
           clock: widget.clock,
+          transfer: widget.transfer,
           onStateChanged: widget.onStateChanged,
         ),
       ),
