@@ -1,3 +1,4 @@
+import 'exercise.dart';
 import 'rest_kind.dart';
 import 'work_day_command.dart';
 import 'work_day_event.dart';
@@ -10,6 +11,7 @@ final class WorkDaySnapshot {
     required this.worked,
     required this.remainingInWorkWindow,
     required List<WorkDayEvent> events,
+    List<Exercise> exercises = const <Exercise>[],
     this.startedAt,
     this.finishedAt,
     this.workWindowEndsAt,
@@ -18,8 +20,10 @@ final class WorkDaySnapshot {
     this.nextRestAt,
     this.untilNextRest,
     this.remainingRest,
+    this.lastRestFinished,
   }) : availableCommands = List.unmodifiable(availableCommands),
-       events = List.unmodifiable(events);
+       events = List.unmodifiable(events),
+       exercises = List.unmodifiable(exercises);
 
   final WorkDayPhase phase;
 
@@ -61,6 +65,14 @@ final class WorkDaySnapshot {
   /// Сколько осталось от идущего отдыха; null, если отдых не идёт.
   /// Никогда не отрицательно.
   final Duration? remainingRest;
+
+  /// Упражнения текущего отдыха: короткий отдых показывает ровно одно.
+  /// Вне отдыха список пуст.
+  final List<Exercise> exercises;
+
+  /// Событие о завершении последнего отдыха текущего рабочего дня с причиной
+  /// и плановой/фактической длительностью; null, пока отдых не завершался.
+  final WorkDayEvent? lastRestFinished;
 
   /// Журнал событий рабочего дня.
   final List<WorkDayEvent> events;

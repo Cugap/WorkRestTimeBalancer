@@ -1,3 +1,5 @@
+import 'exercise.dart';
+import 'exercise_catalog.dart';
 import 'rest_kind.dart';
 import 'work_day_command.dart';
 import 'work_day_event.dart';
@@ -13,6 +15,7 @@ final class WorkDayEngine {
     this.window = WorkWindow.standard,
     this.shortRestInterval = const Duration(minutes: 25),
     this.shortRestDuration = const Duration(minutes: 3),
+    this.catalog = exerciseCatalog,
   });
 
   /// Рабочее окно, внутри которого отслеживается ритм.
@@ -24,6 +27,9 @@ final class WorkDayEngine {
   /// Длительность короткого отдыха.
   final Duration shortRestDuration;
 
+  /// Набор упражнений, из которого ядро выбирает их по кругу.
+  final List<Exercise> catalog;
+
   WorkDayPhase _phase = WorkDayPhase.notStarted;
   DateTime? _startedAt;
   DateTime? _finishedAt;
@@ -33,7 +39,11 @@ final class WorkDayEngine {
   DateTime? _nextRestAt;
   bool _restOffered = false;
   DateTime? _restEndsAt;
+  DateTime? _restStartedAt;
   DateTime? _workIntervalStartedAt;
+  List<Exercise> _restExercises = const <Exercise>[];
+  WorkDayEvent? _lastRestFinished;
+  int _nextExerciseIndex = 0;
   Duration _worked = Duration.zero;
   final List<WorkDayEvent> _events = <WorkDayEvent>[];
 
@@ -59,6 +69,9 @@ final class WorkDayEngine {
     _nextRestAt = now.add(shortRestInterval);
     _restOffered = false;
     _restEndsAt = null;
+    _restStartedAt = null;
+    _restExercises = const <Exercise>[];
+    _lastRestFinished = null;
     _workIntervalStartedAt = now;
     _pausedAt = null;
     _worked = Duration.zero;
@@ -67,6 +80,7 @@ final class WorkDayEngine {
   }
 
   /// Начать предложенный отдых: работа замирает, идёт таймер отдыха.
+  /// Упражнения выбираются по кругу один раз — на момент начала отдыха.
   WorkDayCommandResult startRest(DateTime now) {
     _syncWithClock(now);
 
@@ -78,11 +92,26 @@ final class WorkDayEngine {
     _worked += now.difference(_runningSince!);
     _runningSince = null;
     _phase = WorkDayPhase.resting;
-    _restEndsAt = now.add(shortRestDuration);
+    _restEndsAt = now.add(_restDurationFor(RestKind.short));
+    _restStartedAt = now;
+    _restExercises = _takeExercises(_exerciseCountFor(RestKind.short));
     _restOffered = false;
     _nextRestAt = null;
     _workIntervalStartedAt = null;
     _events.add(WorkDayEvent.restStarted(now, RestKind.short));
+    return const WorkDayCommandAccepted();
+  }
+
+  /// Завершить идущий отдых досрочно: новый интервал работы начинается с этого
+  /// момента, и ритм продолжается от него.
+  WorkDayCommandResult finishRest(DateTime now) {
+    _syncWithClock(now);
+
+    if (_phase != WorkDayPhase.resting) {
+      return const WorkDayCommandRejected(RejectionReason.restNotInProgress);
+    }
+
+    _endRest(now, RestFinishReason.early);
     return const WorkDayCommandAccepted();
   }
 
@@ -184,6 +213,17 @@ final class WorkDayEngine {
       return WorkDayCommandRejected(rejection);
     }
 
+    if (_phase == WorkDayPhase.resting) {
+      // Отдых прерван завершением дня: в журнале он считается завершённым.
+      final restFinished = _restFinishedEvent(
+        now,
+        RestFinishReason.workDayEnded,
+      );
+      _lastRestFinished = restFinished;
+      _clearRest();
+      _events.add(restFinished);
+    }
+
     if (_phase == WorkDayPhase.running) {
       _worked += now.difference(_runningSince!);
       _runningSince = null;
@@ -192,7 +232,6 @@ final class WorkDayEngine {
     _finishedAt = now;
     _nextRestAt = null;
     _restOffered = false;
-    _restEndsAt = null;
     _workIntervalStartedAt = null;
     _pausedAt = null;
     _events.add(WorkDayEvent.finished(now, WorkDayFinishReason.manual));
@@ -216,6 +255,8 @@ final class WorkDayEngine {
       nextRestAt: _nextRestAtWithinWindow,
       untilNextRest: _untilNextRest(now),
       remainingRest: _remainingRest(now),
+      exercises: _restExercises,
+      lastRestFinished: _lastRestFinished,
       events: _events,
     );
   }
@@ -245,30 +286,54 @@ final class WorkDayEngine {
       return;
     }
 
-    _restEndsAt = null;
+    _endRest(endsAt, RestFinishReason.natural);
+  }
+
+  /// Закончить идущий отдых в момент [endedAt]. За концом рабочего окна работа
+  /// уже не начинается: день закрывается по концу окна.
+  void _endRest(DateTime endedAt, RestFinishReason reason) {
+    final restFinished = _restFinishedEvent(endedAt, reason);
+    _clearRest();
+    _lastRestFinished = restFinished;
+
     final windowEndsAt = _workWindowEndsAt;
-    if (windowEndsAt != null && !endsAt.isBefore(windowEndsAt)) {
-      // Отдых доигран уже за концом окна: день закрывается по концу окна,
-      // а отдых записывается в журнал позже — по своему фактическому концу.
+    if (windowEndsAt != null && !endedAt.isBefore(windowEndsAt)) {
       _phase = WorkDayPhase.finished;
       _finishedAt = windowEndsAt;
       _nextRestAt = null;
+      _restOffered = false;
       _workIntervalStartedAt = null;
+      _pausedAt = null;
       _events.add(
         WorkDayEvent.finished(
           windowEndsAt,
           WorkDayFinishReason.workWindowEnded,
         ),
       );
-      _events.add(WorkDayEvent.restFinished(endsAt, RestKind.short));
+      _events.add(restFinished);
       return;
     }
 
     _phase = WorkDayPhase.running;
-    _runningSince = endsAt;
-    _nextRestAt = endsAt.add(shortRestInterval);
-    _workIntervalStartedAt = endsAt;
-    _events.add(WorkDayEvent.restFinished(endsAt, RestKind.short));
+    _runningSince = endedAt;
+    _nextRestAt = endedAt.add(shortRestInterval);
+    _workIntervalStartedAt = endedAt;
+    _events.add(restFinished);
+  }
+
+  WorkDayEvent _restFinishedEvent(DateTime endedAt, RestFinishReason reason) =>
+      WorkDayEvent.restFinished(
+        endedAt,
+        RestKind.short,
+        restFinishReason: reason,
+        plannedDuration: _restDurationFor(RestKind.short),
+        actualDuration: endedAt.difference(_restStartedAt ?? endedAt),
+      );
+
+  void _clearRest() {
+    _restEndsAt = null;
+    _restStartedAt = null;
+    _restExercises = const <Exercise>[];
   }
 
   void _closeAtWorkWindowEndIfDue(DateTime now) {
@@ -365,7 +430,10 @@ final class WorkDayEngine {
         WorkDayCommand.resume,
         WorkDayCommand.finish,
       ],
-      WorkDayPhase.resting => const [WorkDayCommand.finish],
+      WorkDayPhase.resting => const [
+        WorkDayCommand.finishRest,
+        WorkDayCommand.finish,
+      ],
       WorkDayPhase.finished =>
         window.contains(now) ? const [WorkDayCommand.start] : const [],
     };
@@ -377,6 +445,31 @@ final class WorkDayEngine {
       return _worked + now.difference(since);
     }
     return _worked;
+  }
+
+  /// Сколько упражнений показывает отдых: короткий — одно.
+  int _exerciseCountFor(RestKind kind) => switch (kind) {
+    RestKind.short => 1,
+  };
+
+  /// Плановая длительность отдыха по его виду.
+  Duration _restDurationFor(RestKind kind) => switch (kind) {
+    RestKind.short => shortRestDuration,
+  };
+
+  /// Взять [count] упражнений по кругу. Курсор запоминается в состоянии движка,
+  /// поэтому первый отдых следующего раза не повторяет прошлое упражнение,
+  /// а после конца набора круг начинается заново.
+  List<Exercise> _takeExercises(int count) {
+    if (catalog.isEmpty) {
+      return const <Exercise>[];
+    }
+    final taken = <Exercise>[];
+    for (var index = 0; index < count; index++) {
+      taken.add(catalog[_nextExerciseIndex]);
+      _nextExerciseIndex = (_nextExerciseIndex + 1) % catalog.length;
+    }
+    return List.unmodifiable(taken);
   }
 
   Duration _remainingInWorkWindow(DateTime now) {

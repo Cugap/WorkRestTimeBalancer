@@ -91,7 +91,10 @@ void main() {
       expect(started.nextRestAt, isNull);
       expect(started.workIntervalStartedAt, isNull);
       expect(started.worked, const Duration(minutes: 27));
-      expect(started.availableCommands, [WorkDayCommand.finish]);
+      expect(started.availableCommands, [
+        WorkDayCommand.finishRest,
+        WorkDayCommand.finish,
+      ]);
       expect(
         started.events.last,
         WorkDayEvent.restStarted(_at(9, 27), RestKind.short),
@@ -121,7 +124,12 @@ void main() {
         WorkDayEvent.started(_at(9)),
         WorkDayEvent.restOffered(_at(9, 25), RestKind.short),
         WorkDayEvent.restStarted(_at(9, 25), RestKind.short),
-        WorkDayEvent.restFinished(_at(9, 28), RestKind.short),
+        WorkDayEvent.restFinished(
+          _at(9, 28),
+          RestKind.short,
+          plannedDuration: const Duration(minutes: 3),
+          actualDuration: const Duration(minutes: 3),
+        ),
       ]);
     });
 
@@ -150,6 +158,142 @@ void main() {
       expect(snapshot.remainingRest, isNull);
       expect(snapshot.restKind, isNull);
       expect(snapshot.worked, const Duration(minutes: 25));
+    });
+  });
+
+  group('досрочное завершение отдыха', () {
+    test('«Закончить сейчас» сразу начинает новый интервал работы', () {
+      engine.startWorkDay(_at(9));
+      engine.snapshot(_at(9, 25));
+      engine.startRest(_at(9, 25));
+
+      expect(engine.finishRest(_at(9, 26)), isA<WorkDayCommandAccepted>());
+      final snapshot = engine.snapshot(_at(9, 26));
+
+      expect(snapshot.phase, WorkDayPhase.running);
+      expect(snapshot.restKind, isNull);
+      expect(snapshot.remainingRest, isNull);
+      expect(snapshot.exercises, isEmpty);
+      expect(snapshot.worked, const Duration(minutes: 25));
+      expect(snapshot.workIntervalStartedAt, _at(9, 26));
+      expect(snapshot.nextRestAt, _at(9, 51));
+      expect(snapshot.untilNextRest, const Duration(minutes: 25));
+      expect(snapshot.availableCommands, [
+        WorkDayCommand.pause,
+        WorkDayCommand.finish,
+      ]);
+    });
+
+    test('досрочное завершение пишется в журнал с причиной и длительностью', () {
+      engine.startWorkDay(_at(9));
+      engine.snapshot(_at(9, 25));
+      engine.startRest(_at(9, 25));
+      engine.finishRest(_at(9, 26));
+
+      final snapshot = engine.snapshot(_at(9, 26));
+      final expected = WorkDayEvent.restFinished(
+        _at(9, 26),
+        RestKind.short,
+        restFinishReason: RestFinishReason.early,
+        plannedDuration: const Duration(minutes: 3),
+        actualDuration: const Duration(minutes: 1),
+      );
+
+      expect(snapshot.lastRestFinished, expected);
+      expect(snapshot.events, [
+        WorkDayEvent.started(_at(9)),
+        WorkDayEvent.restOffered(_at(9, 25), RestKind.short),
+        WorkDayEvent.restStarted(_at(9, 25), RestKind.short),
+        expected,
+      ]);
+    });
+
+    test('естественное завершение отмечает плановую и фактическую длительность', () {
+      engine.startWorkDay(_at(9));
+      engine.snapshot(_at(9, 25));
+      engine.startRest(_at(9, 25));
+
+      final lastRest = engine.snapshot(_at(9, 28)).lastRestFinished!;
+
+      expect(lastRest.restFinishReason, RestFinishReason.natural);
+      expect(lastRest.plannedDuration, const Duration(minutes: 3));
+      expect(lastRest.actualDuration, const Duration(minutes: 3));
+    });
+
+    test('после досрочного завершения новый отдых приходит по ритму', () {
+      engine.startWorkDay(_at(9));
+      engine.snapshot(_at(9, 25));
+      engine.startRest(_at(9, 25));
+      engine.finishRest(_at(9, 26));
+
+      expect(engine.snapshot(_at(9, 50, 59)).phase, WorkDayPhase.running);
+      expect(engine.snapshot(_at(9, 51)).phase, WorkDayPhase.restOffered);
+    });
+
+    test('завершение отдыха, когда отдых не идёт, отклоняется', () {
+      engine.startWorkDay(_at(9));
+
+      expect(
+        (engine.finishRest(_at(9, 10)) as WorkDayCommandRejected).reason,
+        RejectionReason.restNotInProgress,
+      );
+      expect(engine.snapshot(_at(9, 10)).phase, WorkDayPhase.running);
+
+      engine.snapshot(_at(9, 25));
+
+      expect(
+        (engine.finishRest(_at(9, 26)) as WorkDayCommandRejected).reason,
+        RejectionReason.restNotInProgress,
+      );
+      expect(engine.snapshot(_at(9, 26)).phase, WorkDayPhase.restOffered);
+    });
+
+    test('досрочное завершение после конца окна закрывает день', () {
+      engine.startWorkDay(_at(17, 30));
+      engine.snapshot(_at(17, 55));
+      engine.startRest(_at(17, 58));
+
+      expect(engine.finishRest(_at(18, 0, 30)), isA<WorkDayCommandAccepted>());
+      final snapshot = engine.snapshot(_at(18, 0, 30));
+
+      expect(snapshot.phase, WorkDayPhase.finished);
+      expect(snapshot.finishedAt, _at(18));
+      expect(snapshot.remainingRest, isNull);
+      expect(
+        snapshot.lastRestFinished,
+        WorkDayEvent.restFinished(
+          _at(18, 0, 30),
+          RestKind.short,
+          restFinishReason: RestFinishReason.early,
+          plannedDuration: const Duration(minutes: 3),
+          actualDuration: const Duration(minutes: 2, seconds: 30),
+        ),
+      );
+    });
+
+    test('завершение рабочего дня во время отдыха пишет конец отдыха', () {
+      engine.startWorkDay(_at(9));
+      engine.snapshot(_at(9, 25));
+      engine.startRest(_at(9, 25));
+      engine.finishWorkDay(_at(9, 26));
+
+      final snapshot = engine.snapshot(_at(9, 26));
+      final expected = WorkDayEvent.restFinished(
+        _at(9, 26),
+        RestKind.short,
+        restFinishReason: RestFinishReason.workDayEnded,
+        plannedDuration: const Duration(minutes: 3),
+        actualDuration: const Duration(minutes: 1),
+      );
+
+      expect(snapshot.lastRestFinished, expected);
+      expect(snapshot.events, [
+        WorkDayEvent.started(_at(9)),
+        WorkDayEvent.restOffered(_at(9, 25), RestKind.short),
+        WorkDayEvent.restStarted(_at(9, 25), RestKind.short),
+        expected,
+        WorkDayEvent.finished(_at(9, 26), WorkDayFinishReason.manual),
+      ]);
     });
   });
 
@@ -328,7 +472,12 @@ void main() {
         WorkDayEvent.restOffered(_at(17, 55), RestKind.short),
         WorkDayEvent.restStarted(_at(17, 58), RestKind.short),
         WorkDayEvent.finished(_at(18), WorkDayFinishReason.workWindowEnded),
-        WorkDayEvent.restFinished(_at(18, 1), RestKind.short),
+        WorkDayEvent.restFinished(
+          _at(18, 1),
+          RestKind.short,
+          plannedDuration: const Duration(minutes: 3),
+          actualDuration: const Duration(minutes: 3),
+        ),
       ]);
     });
   });
