@@ -178,6 +178,43 @@ void main() {
         reason: 'после сброса лимит снова полный',
       );
     });
+
+    test('счётчик сбрасывается при досрочном завершении отдыха', () {
+      postponeTwice();
+
+      expect(engine.startRest(_at(9, 35)), isA<WorkDayCommandAccepted>());
+      expect(engine.finishRest(_at(9, 36)), isA<WorkDayCommandAccepted>());
+
+      final early = engine.snapshot(_at(9, 36));
+
+      expect(early.phase, WorkDayPhase.running);
+      expect(early.remainingPostponements, 2);
+      expect(early.nextRestAt, _at(10, 1));
+
+      final offered = engine.snapshot(_at(10, 1));
+
+      expect(offered.phase, WorkDayPhase.restOffered);
+      expect(offered.remainingPostponements, 2);
+      expect(engine.postponeRest(_at(10, 1)), isA<WorkDayCommandAccepted>());
+      expect(engine.snapshot(_at(10, 1)).remainingPostponements, 1);
+    });
+
+    test('счётчик сбрасывается при завершении рабочего дня', () {
+      postponeTwice();
+
+      expect(engine.finishWorkDay(_at(9, 36)), isA<WorkDayCommandAccepted>());
+      expect(engine.snapshot(_at(9, 36)).remainingPostponements, 2);
+
+      expect(engine.startWorkDay(_at(9, 40)), isA<WorkDayCommandAccepted>());
+
+      final newDay = engine.snapshot(_at(10, 5));
+
+      expect(newDay.phase, WorkDayPhase.restOffered);
+      expect(newDay.remainingPostponements, 2);
+      expect(engine.postponeRest(_at(10, 5)), isA<WorkDayCommandAccepted>());
+      expect(engine.postponeRest(_at(10, 10)), isA<WorkDayCommandAccepted>());
+      expect(engine.snapshot(_at(10, 15)).remainingPostponements, 0);
+    });
   });
 
   group('отложение и пауза', () {
