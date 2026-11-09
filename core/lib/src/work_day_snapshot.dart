@@ -1,5 +1,6 @@
 import 'exercise.dart';
 import 'rest_kind.dart';
+import 'rhythm_settings.dart';
 import 'work_day_command.dart';
 import 'work_day_event.dart';
 
@@ -8,6 +9,7 @@ final class WorkDaySnapshot {
   WorkDaySnapshot({
     required this.phase,
     required List<WorkDayCommand> availableCommands,
+    required this.settings,
     required this.worked,
     required this.remainingInWorkWindow,
     required this.remainingPostponements,
@@ -31,6 +33,10 @@ final class WorkDaySnapshot {
 
   /// Действия, которые ядро сейчас примет; экран не решает это сам.
   final List<WorkDayCommand> availableCommands;
+
+  /// Действующие настройки ритма и рабочего окна. Экран показывает их как есть
+  /// и отправляет изменённые обратно в движок.
+  final RhythmSettings settings;
 
   /// Отработанное время внутри рабочего дня без пауз.
   final Duration worked;

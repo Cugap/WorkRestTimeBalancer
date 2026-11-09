@@ -38,8 +38,10 @@ void _runScenario(List<Step> steps, {WorkDayEngine? engine}) {
   final day =
       engine ??
       WorkDayEngine(
-        shortRestInterval: const Duration(hours: 12),
-        longRestInterval: const Duration(hours: 12),
+        settings: RhythmSettings(
+          shortRestInterval: const Duration(hours: 12),
+          longRestInterval: const Duration(hours: 12),
+        ),
       );
 
   for (final step in steps) {
@@ -159,6 +161,65 @@ void _runRestKindScenario(WorkDayEngine day, List<RestKindStep> steps) {
       snapshot.restKind,
       step.restKind,
       reason: 'вид отдыха на ${step.at}',
+    );
+  }
+}
+
+/// Шаг сценария настроек: правка настроек и/или команда и ожидаемое состояние.
+typedef SettingsStep = ({
+  Duration at,
+  RhythmSettings? settings,
+  WorkDayCommand? command,
+  WorkDayPhase phase,
+  RestKind? restKind,
+  Duration? restDuration,
+  Duration? remainingRest,
+  DateTime? nextRestAt,
+});
+
+/// Проигрывает сценарий изменения настроек через публичный интерфейс ядра.
+void _runSettingsScenario(List<SettingsStep> steps) {
+  final day = WorkDayEngine();
+
+  for (final step in steps) {
+    final now = _day(step.at);
+    final settings = step.settings;
+    if (settings != null) {
+      expect(
+        day.updateSettings(now, settings),
+        isA<WorkDayCommandAccepted>(),
+        reason: 'настройки на ${step.at}',
+      );
+    }
+    if (step.command != null) {
+      expect(
+        _dispatch(day, step.command, now),
+        isA<WorkDayCommandAccepted>(),
+        reason: 'команда на ${step.at}',
+      );
+    }
+
+    final snapshot = day.snapshot(now);
+    expect(snapshot.phase, step.phase, reason: 'фаза на ${step.at}');
+    expect(
+      snapshot.restKind,
+      step.restKind,
+      reason: 'вид отдыха на ${step.at}',
+    );
+    expect(
+      snapshot.restDuration,
+      step.restDuration,
+      reason: 'длительность отдыха на ${step.at}',
+    );
+    expect(
+      snapshot.remainingRest,
+      step.remainingRest,
+      reason: 'остаток отдыха на ${step.at}',
+    );
+    expect(
+      snapshot.nextRestAt,
+      step.nextRestAt,
+      reason: 'следующий отдых на ${step.at}',
     );
   }
 }
@@ -336,8 +397,10 @@ void main() {
   test('сценарий: длинный отдых вытесняет короткий', () {
     _runRestKindScenario(
       WorkDayEngine(
-        shortRestInterval: const Duration(minutes: 25),
-        longRestInterval: const Duration(minutes: 50),
+        settings: RhythmSettings(
+          shortRestInterval: const Duration(minutes: 25),
+          longRestInterval: const Duration(minutes: 50),
+        ),
       ),
       [
         (
@@ -427,8 +490,10 @@ void main() {
   test('сценарий: день с обедом в 13:00 и досрочным завершением', () {
     _runRestKindScenario(
       WorkDayEngine(
-        shortRestInterval: const Duration(hours: 12),
-        longRestInterval: const Duration(hours: 12),
+        settings: RhythmSettings(
+          shortRestInterval: const Duration(hours: 12),
+          longRestInterval: const Duration(hours: 12),
+        ),
       ),
       [
         (
@@ -644,5 +709,85 @@ void main() {
         rejection: null,
       ),
     ], engine: WorkDayEngine());
+  });
+
+  test('сценарий: новые настройки действуют со следующего отдыха', () {
+    _runSettingsScenario([
+      (
+        at: Duration.zero,
+        settings: null,
+        command: WorkDayCommand.start,
+        phase: WorkDayPhase.running,
+        restKind: null,
+        restDuration: null,
+        remainingRest: null,
+        nextRestAt: _day(const Duration(minutes: 25)),
+      ),
+      (
+        at: const Duration(minutes: 10),
+        settings: RhythmSettings.defaults.copyWith(
+          shortRestInterval: const Duration(minutes: 20),
+        ),
+        command: null,
+        phase: WorkDayPhase.running,
+        restKind: null,
+        restDuration: null,
+        remainingRest: null,
+        nextRestAt: _day(const Duration(minutes: 20)),
+      ),
+      (
+        at: const Duration(minutes: 20),
+        settings: null,
+        command: null,
+        phase: WorkDayPhase.restOffered,
+        restKind: RestKind.short,
+        restDuration: const Duration(minutes: 3),
+        remainingRest: null,
+        nextRestAt: null,
+      ),
+      (
+        at: const Duration(minutes: 20),
+        settings: null,
+        command: WorkDayCommand.startRest,
+        phase: WorkDayPhase.resting,
+        restKind: RestKind.short,
+        restDuration: const Duration(minutes: 3),
+        remainingRest: const Duration(minutes: 3),
+        nextRestAt: null,
+      ),
+      (
+        at: const Duration(minutes: 21),
+        settings: RhythmSettings.defaults.copyWith(
+          shortRestInterval: const Duration(minutes: 30),
+          shortRestDuration: const Duration(minutes: 5),
+        ),
+        command: null,
+        phase: WorkDayPhase.resting,
+        restKind: RestKind.short,
+        restDuration: const Duration(minutes: 3),
+        remainingRest: const Duration(minutes: 2),
+        nextRestAt: null,
+      ),
+      (
+        at: const Duration(minutes: 23),
+        settings: null,
+        command: null,
+        phase: WorkDayPhase.running,
+        restKind: null,
+        restDuration: null,
+        remainingRest: null,
+        nextRestAt: _day(const Duration(minutes: 53)),
+      ),
+      (
+        at: const Duration(minutes: 53),
+        settings: null,
+        command: null,
+        phase: WorkDayPhase.restOffered,
+        restKind: RestKind.short,
+        restDuration: const Duration(minutes: 5),
+        remainingRest: null,
+        nextRestAt: null,
+      ),
+    ]);
   });
 }

@@ -6,6 +6,7 @@ import 'package:work_rest_core/work_rest_core.dart';
 import 'clock.dart';
 import 'labels.dart';
 import 'rest_screen.dart';
+import 'settings_screen.dart';
 
 /// Главный экран: показывает снимок ядра и отправляет команды.
 class WorkDayScreen extends StatefulWidget {
@@ -75,13 +76,35 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
     }
   }
 
+  Future<void> _openSettingsScreen() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            SettingsScreen(engine: widget.engine, clock: widget.clock),
+      ),
+    );
+    if (mounted) {
+      _refresh();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final snapshot = _snapshot;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Рабочий день')),
+      appBar: AppBar(
+        title: const Text('Рабочий день'),
+        actions: [
+          IconButton(
+            key: const ValueKey('open-settings-screen'),
+            tooltip: 'Настройки',
+            icon: const Icon(Icons.tune),
+            onPressed: _openSettingsScreen,
+          ),
+        ],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),

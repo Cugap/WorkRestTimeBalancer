@@ -4,13 +4,13 @@ import 'package:work_rest_core/work_rest_core.dart';
 /// Движок с коротким ритмом и рабочим окном на все сутки: тесты набора
 /// упражнений проходят много отдыхов и не должны упираться в конец окна.
 WorkDayEngine _engine() => WorkDayEngine(
-  window: WorkWindow(
-    start: const ClockTime(0, 0),
-    end: const ClockTime(23, 59),
+  settings: RhythmSettings(
+    workStart: const ClockTime(0, 0),
+    workEnd: const ClockTime(23, 59),
+    shortRestInterval: const Duration(minutes: 1),
+    shortRestDuration: const Duration(seconds: 20),
+    longRestInterval: const Duration(hours: 12),
   ),
-  shortRestInterval: const Duration(minutes: 1),
-  shortRestDuration: const Duration(seconds: 20),
-  longRestInterval: const Duration(hours: 12),
 );
 
 void main() {

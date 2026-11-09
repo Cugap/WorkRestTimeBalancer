@@ -11,6 +11,7 @@ enum WorkDayEventType {
   restSkipped,
   restPostponed,
   restFinished,
+  settingsChanged,
 }
 
 /// Причина завершения рабочего дня.
@@ -96,6 +97,14 @@ final class WorkDayEvent {
     this.actualDuration,
   }) : type = WorkDayEventType.restFinished,
        finishReason = null;
+
+  const WorkDayEvent.settingsChanged(this.at)
+    : type = WorkDayEventType.settingsChanged,
+      finishReason = null,
+      restKind = null,
+      restFinishReason = null,
+      plannedDuration = null,
+      actualDuration = null;
 
   final WorkDayEventType type;
   final DateTime at;

@@ -5,6 +5,8 @@ export 'src/clock_time.dart';
 export 'src/exercise.dart';
 export 'src/exercise_catalog.dart';
 export 'src/rest_kind.dart';
+export 'src/rhythm_settings.dart';
+export 'src/settings_validation.dart';
 export 'src/work_day_command.dart';
 export 'src/work_day_engine.dart';
 export 'src/work_day_event.dart';

@@ -5,8 +5,9 @@ DateTime _at(int hour, [int minute = 0, int second = 0]) =>
     DateTime(2026, 3, 4, hour, minute, second);
 
 /// Движок, в котором короткие отдыхи не мешают проверять длинный.
-WorkDayEngine _longOnlyEngine() =>
-    WorkDayEngine(shortRestInterval: const Duration(hours: 12));
+WorkDayEngine _longOnlyEngine() => WorkDayEngine(
+  settings: RhythmSettings(shortRestInterval: const Duration(hours: 12)),
+);
 
 Exercise _exercise(String id, ExerciseCategory category) => Exercise(
   id: id,
@@ -103,8 +104,10 @@ void main() {
   group('приоритет длинного отдыха над коротким', () {
     test('при совпадении моментов предлагается только длинный', () {
       final engine = WorkDayEngine(
-        shortRestInterval: const Duration(minutes: 25),
-        longRestInterval: const Duration(minutes: 50),
+        settings: RhythmSettings(
+          shortRestInterval: const Duration(minutes: 25),
+          longRestInterval: const Duration(minutes: 50),
+        ),
       )..startWorkDay(_at(9));
       engine.snapshot(_at(9, 25));
       expect(engine.skipRest(_at(9, 25)), isA<WorkDayCommandAccepted>());
@@ -126,8 +129,10 @@ void main() {
 
     test('длинный отдых раньше короткого прерывает ожидание короткого', () {
       final engine = WorkDayEngine(
-        shortRestInterval: const Duration(minutes: 25),
-        longRestInterval: const Duration(minutes: 20),
+        settings: RhythmSettings(
+          shortRestInterval: const Duration(minutes: 25),
+          longRestInterval: const Duration(minutes: 20),
+        ),
       )..startWorkDay(_at(9));
 
       final offered = engine.snapshot(_at(9, 26));
@@ -321,7 +326,9 @@ void main() {
       ];
       List<String> longRestPair() {
         final engine = WorkDayEngine(
-          shortRestInterval: const Duration(hours: 12),
+          settings: RhythmSettings(
+            shortRestInterval: const Duration(hours: 12),
+          ),
           catalog: catalog,
         )..startWorkDay(_at(9));
         engine.snapshot(_at(10, 30));
