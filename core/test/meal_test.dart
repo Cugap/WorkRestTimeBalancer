@@ -9,10 +9,13 @@ WorkDayEngine _mealOnlyEngine({
   ClockTime mealStart = const ClockTime(13, 0),
   WorkWindow window = WorkWindow.standard,
 }) => WorkDayEngine(
-  window: window,
-  mealStart: mealStart,
-  shortRestInterval: const Duration(hours: 12),
-  longRestInterval: const Duration(hours: 12),
+  settings: RhythmSettings(
+    workStart: window.start,
+    workEnd: window.end,
+    mealStart: mealStart,
+    shortRestInterval: const Duration(hours: 12),
+    longRestInterval: const Duration(hours: 12),
+  ),
 );
 
 void main() {
@@ -106,8 +109,10 @@ void main() {
 
     test('обед не повторяет упражнение предыдущего отдыха', () {
       final engine = WorkDayEngine(
-        shortRestInterval: const Duration(minutes: 25),
-        longRestInterval: const Duration(hours: 12),
+        settings: RhythmSettings(
+          shortRestInterval: const Duration(minutes: 25),
+          longRestInterval: const Duration(hours: 12),
+        ),
       )..startWorkDay(_at(9));
       engine.snapshot(_at(9, 25));
       engine.startRest(_at(9, 25));
@@ -127,8 +132,10 @@ void main() {
 
     test('обед, момент которого совпадает с коротким отдыхом, выигрывает', () {
       final engine = WorkDayEngine(
-        shortRestInterval: const Duration(hours: 4),
-        longRestInterval: const Duration(hours: 12),
+        settings: RhythmSettings(
+          shortRestInterval: const Duration(hours: 4),
+          longRestInterval: const Duration(hours: 12),
+        ),
       )..startWorkDay(_at(9));
 
       final offered = engine.snapshot(_at(13));
@@ -154,8 +161,10 @@ void main() {
 
     test('обед, момент которого совпадает с длинным отдыхом, выигрывает', () {
       final engine = WorkDayEngine(
-        shortRestInterval: const Duration(hours: 12),
-        longRestInterval: const Duration(hours: 4),
+        settings: RhythmSettings(
+          shortRestInterval: const Duration(hours: 12),
+          longRestInterval: const Duration(hours: 4),
+        ),
       )..startWorkDay(_at(9));
 
       final offered = engine.snapshot(_at(13));
@@ -295,8 +304,10 @@ void main() {
 
     test('ручной обед сбрасывает счётчики короткого и длинного отдыха', () {
       final engine = WorkDayEngine(
-        shortRestInterval: const Duration(minutes: 25),
-        longRestInterval: const Duration(minutes: 45),
+        settings: RhythmSettings(
+          shortRestInterval: const Duration(minutes: 25),
+          longRestInterval: const Duration(minutes: 45),
+        ),
       )..startWorkDay(_at(9));
 
       engine.startMeal(_at(10));
@@ -316,8 +327,10 @@ void main() {
 
     test('обед вытесняет предложенный короткий отдых', () {
       final engine = WorkDayEngine(
-        shortRestInterval: const Duration(minutes: 25),
-        longRestInterval: const Duration(hours: 12),
+        settings: RhythmSettings(
+          shortRestInterval: const Duration(minutes: 25),
+          longRestInterval: const Duration(hours: 12),
+        ),
       )..startWorkDay(_at(9));
       engine.snapshot(_at(9, 25));
 
@@ -433,8 +446,10 @@ void main() {
       'пропуск обеда ничего не переносит и не сбрасывает длинный счётчик',
       () {
         final engine = WorkDayEngine(
-          shortRestInterval: const Duration(hours: 12),
-          longRestInterval: const Duration(minutes: 90),
+          settings: RhythmSettings(
+            shortRestInterval: const Duration(hours: 12),
+            longRestInterval: const Duration(minutes: 90),
+          ),
         )..startWorkDay(_at(9));
 
         engine.snapshot(_at(10, 30));
@@ -465,9 +480,11 @@ void main() {
 
     test('отложенный обед не теряется, пока предлагается другой отдых', () {
       final engine = WorkDayEngine(
-        shortRestInterval: const Duration(minutes: 25),
-        longRestInterval: const Duration(hours: 12),
-        mealStart: const ClockTime(9, 30),
+        settings: RhythmSettings(
+          shortRestInterval: const Duration(minutes: 25),
+          longRestInterval: const Duration(hours: 12),
+          mealStart: const ClockTime(9, 30),
+        ),
       )..startWorkDay(_at(9));
 
       // Короткий отдых наступает раньше обеда и занимает единственное
@@ -519,8 +536,10 @@ void main() {
 
     test('досрочное завершение обеда сбрасывает оба счётчика', () {
       final engine = WorkDayEngine(
-        shortRestInterval: const Duration(minutes: 25),
-        longRestInterval: const Duration(minutes: 90),
+        settings: RhythmSettings(
+          shortRestInterval: const Duration(minutes: 25),
+          longRestInterval: const Duration(minutes: 90),
+        ),
       )..startWorkDay(_at(9));
       engine.startMeal(_at(10));
 

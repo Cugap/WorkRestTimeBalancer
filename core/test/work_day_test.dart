@@ -23,8 +23,10 @@ void main() {
     // Механика дня проверяется отдельно от ритма: интервалы отдыха длиннее
     // рабочего окна, поэтому предложений отдыха в этих тестах нет.
     engine = WorkDayEngine(
-      shortRestInterval: const Duration(hours: 12),
-      longRestInterval: const Duration(hours: 12),
+      settings: RhythmSettings(
+        shortRestInterval: const Duration(hours: 12),
+        longRestInterval: const Duration(hours: 12),
+      ),
     );
   });
 

@@ -89,4 +89,18 @@ String rejectionText(RejectionReason reason) => switch (reason) {
     'Отдых уже отложен дважды: можно начать или пропустить',
   RejectionReason.restNotInProgress => 'Отдых сейчас не идёт',
   RejectionReason.mealAlreadyTaken => 'Обед на сегодня уже состоялся',
+  RejectionReason.workWindowStartNotBeforeEnd =>
+    'Начало рабочего окна должно быть раньше конца',
+  RejectionReason.shortRestIntervalOutOfRange =>
+    'Интервал короткого отдыха — от 20 до 30 минут',
+  RejectionReason.shortRestDurationOutOfRange =>
+    'Длительность короткого отдыха — от 20 секунд до 5 минут',
+  RejectionReason.longRestIntervalOutOfRange =>
+    'Интервал длинного отдыха — от 1 до 2 часов',
+  RejectionReason.longRestDurationOutOfRange =>
+    'Длительность длинного отдыха — от 5 до 15 минут',
+  RejectionReason.mealDurationNotPositive =>
+    'Длительность обеда должна быть больше нуля',
+  RejectionReason.mealNotInsideWorkWindow =>
+    'Обед должен целиком помещаться в рабочее окно',
 };

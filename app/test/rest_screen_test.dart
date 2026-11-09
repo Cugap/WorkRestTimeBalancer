@@ -83,8 +83,10 @@ void main() {
     tester,
   ) async {
     engine = WorkDayEngine(
-      shortRestInterval: const Duration(hours: 12),
-      longRestInterval: const Duration(minutes: 25),
+      settings: RhythmSettings(
+        shortRestInterval: const Duration(hours: 12),
+        longRestInterval: const Duration(minutes: 25),
+      ),
     );
     await pumpApp(tester);
     await offerRest(tester);
@@ -121,8 +123,10 @@ void main() {
     tester,
   ) async {
     engine = WorkDayEngine(
-      shortRestInterval: const Duration(hours: 12),
-      longRestInterval: const Duration(hours: 12),
+      settings: RhythmSettings(
+        shortRestInterval: const Duration(hours: 12),
+        longRestInterval: const Duration(hours: 12),
+      ),
     );
     await pumpApp(tester);
     await tap(tester, key('command-start'));
