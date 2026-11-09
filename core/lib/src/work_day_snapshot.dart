@@ -1,3 +1,4 @@
+import 'rest_kind.dart';
 import 'work_day_command.dart';
 import 'work_day_event.dart';
 
@@ -12,6 +13,11 @@ final class WorkDaySnapshot {
     this.startedAt,
     this.finishedAt,
     this.workWindowEndsAt,
+    this.workIntervalStartedAt,
+    this.restKind,
+    this.nextRestAt,
+    this.untilNextRest,
+    this.remainingRest,
   }) : availableCommands = List.unmodifiable(availableCommands),
        events = List.unmodifiable(events);
 
@@ -34,6 +40,27 @@ final class WorkDaySnapshot {
 
   /// Конец рабочего окна текущего рабочего дня.
   final DateTime? workWindowEndsAt;
+
+  /// Начало текущего интервала работы: момент старта дня, конца отдыха или
+  /// пропуска. На паузе не меняется, во время отдыха отсутствует.
+  final DateTime? workIntervalStartedAt;
+
+  /// Вид идущего или предложенного отдыха; null, если отдыха нет.
+  final RestKind? restKind;
+
+  /// Момент следующего отдыха по часам; null, если следующий отдых ещё не
+  /// запланирован (отдых предложен или идёт) или не наступит в этом рабочем
+  /// дне. На паузе момент не сдвигается — сдвиг происходит при возобновлении.
+  final DateTime? nextRestAt;
+
+  /// Сколько осталось до следующего отдыха по счётчику ритма; на паузе
+  /// замирает, у предложенного отдыха равен нулю. Null, если отдых не
+  /// запланирован или уже идёт. Никогда не отрицательно.
+  final Duration? untilNextRest;
+
+  /// Сколько осталось от идущего отдыха; null, если отдых не идёт.
+  /// Никогда не отрицательно.
+  final Duration? remainingRest;
 
   /// Журнал событий рабочего дня.
   final List<WorkDayEvent> events;

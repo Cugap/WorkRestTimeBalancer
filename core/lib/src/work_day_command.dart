@@ -9,12 +9,18 @@ enum WorkDayPhase {
   /// Рабочий день на паузе: счёт рабочего времени заморожен.
   paused,
 
+  /// Приложение предлагает отдых; время работы при этом продолжает идти.
+  restOffered,
+
+  /// Отдых идёт: время работы замерло, идёт таймер отдыха.
+  resting,
+
   /// Рабочий день завершён — вручную или по концу рабочего окна.
   finished,
 }
 
 /// Действия, доступные в текущей фазе.
-enum WorkDayCommand { start, pause, resume, finish }
+enum WorkDayCommand { start, pause, resume, finish, startRest, skipRest }
 
 /// Почему команда отклонена. Состояние при отказе не меняется.
 enum RejectionReason {
@@ -24,6 +30,12 @@ enum RejectionReason {
   workDayNotPaused,
   workDayAlreadyFinished,
   outsideWorkWindow,
+
+  /// Отдых сейчас не предложен, поэтому его нельзя начать или пропустить.
+  restNotOffered,
+
+  /// Отдых уже идёт, поэтому команда работы с ритмом недоступна.
+  restInProgress,
 }
 
 /// Результат команды рабочего дня.

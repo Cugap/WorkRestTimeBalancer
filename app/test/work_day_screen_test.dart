@@ -80,4 +80,61 @@ void main() {
     expect(phase(WorkDayPhase.finished), findsOneWidget);
     expect(command(WorkDayCommand.start), findsNothing);
   });
+
+  testWidgets('экран показывает отсчёт до отдыха и предложение начать его', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await tapCommand(tester, WorkDayCommand.start);
+
+    expect(find.byKey(const ValueKey('next-rest-countdown')), findsOneWidget);
+    expect(phase(WorkDayPhase.running), findsOneWidget);
+
+    clock.advance(const Duration(minutes: 25));
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(phase(WorkDayPhase.restOffered), findsOneWidget);
+    expect(command(WorkDayCommand.startRest), findsOneWidget);
+    expect(command(WorkDayCommand.skipRest), findsOneWidget);
+
+    await tapCommand(tester, WorkDayCommand.startRest);
+
+    expect(phase(WorkDayPhase.resting), findsOneWidget);
+    expect(find.byKey(const ValueKey('rest-countdown')), findsOneWidget);
+    expect(find.byKey(const ValueKey('next-rest-countdown')), findsNothing);
+    expect(command(WorkDayCommand.startRest), findsNothing);
+  });
+
+  testWidgets('тик экрана заканчивает отдых и начинает новый интервал', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await tapCommand(tester, WorkDayCommand.start);
+    clock.advance(const Duration(minutes: 25));
+    await tester.pump(const Duration(seconds: 1));
+    await tapCommand(tester, WorkDayCommand.startRest);
+
+    clock.advance(const Duration(minutes: 3));
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(phase(WorkDayPhase.running), findsOneWidget);
+    expect(find.byKey(const ValueKey('rest-countdown')), findsNothing);
+    expect(find.byKey(const ValueKey('next-rest-countdown')), findsOneWidget);
+    expect(command(WorkDayCommand.pause), findsOneWidget);
+  });
+
+  testWidgets('пропуск отдыха сразу возвращает отсчёт интервала', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await tapCommand(tester, WorkDayCommand.start);
+    clock.advance(const Duration(minutes: 25));
+    await tester.pump(const Duration(seconds: 1));
+
+    await tapCommand(tester, WorkDayCommand.skipRest);
+
+    expect(phase(WorkDayPhase.running), findsOneWidget);
+    expect(find.byKey(const ValueKey('next-rest-countdown')), findsOneWidget);
+    expect(command(WorkDayCommand.skipRest), findsNothing);
+  });
 }

@@ -1,3 +1,4 @@
+import 'rest_kind.dart';
 import 'work_day_command.dart';
 import 'work_day_event.dart';
 import 'work_day_snapshot.dart';
@@ -8,16 +9,31 @@ import 'work_window.dart';
 /// Оболочка обязана передавать неубывающее время — тогда перевод системных
 /// часов назад не сдвигает ритм.
 final class WorkDayEngine {
-  WorkDayEngine({this.window = WorkWindow.standard});
+  WorkDayEngine({
+    this.window = WorkWindow.standard,
+    this.shortRestInterval = const Duration(minutes: 25),
+    this.shortRestDuration = const Duration(minutes: 3),
+  });
 
   /// Рабочее окно, внутри которого отслеживается ритм.
   final WorkWindow window;
+
+  /// Интервал работы между короткими отдыхами.
+  final Duration shortRestInterval;
+
+  /// Длительность короткого отдыха.
+  final Duration shortRestDuration;
 
   WorkDayPhase _phase = WorkDayPhase.notStarted;
   DateTime? _startedAt;
   DateTime? _finishedAt;
   DateTime? _runningSince;
+  DateTime? _pausedAt;
   DateTime? _workWindowEndsAt;
+  DateTime? _nextRestAt;
+  bool _restOffered = false;
+  DateTime? _restEndsAt;
+  DateTime? _workIntervalStartedAt;
   Duration _worked = Duration.zero;
   final List<WorkDayEvent> _events = <WorkDayEvent>[];
 
@@ -25,7 +41,8 @@ final class WorkDayEngine {
   WorkDayCommandResult startWorkDay(DateTime now) {
     _syncWithClock(now);
 
-    if (_phase == WorkDayPhase.running || _phase == WorkDayPhase.paused) {
+    if (_visiblePhase != WorkDayPhase.notStarted &&
+        _visiblePhase != WorkDayPhase.finished) {
       return const WorkDayCommandRejected(
         RejectionReason.workDayAlreadyInProgress,
       );
@@ -39,20 +56,75 @@ final class WorkDayEngine {
     _finishedAt = null;
     _runningSince = now;
     _workWindowEndsAt = window.endOn(now);
+    _nextRestAt = now.add(shortRestInterval);
+    _restOffered = false;
+    _restEndsAt = null;
+    _workIntervalStartedAt = now;
+    _pausedAt = null;
     _worked = Duration.zero;
     _events.add(WorkDayEvent.started(now));
     return const WorkDayCommandAccepted();
   }
 
+  /// Начать предложенный отдых: работа замирает, идёт таймер отдыха.
+  WorkDayCommandResult startRest(DateTime now) {
+    _syncWithClock(now);
+
+    final rejection = _restCommandRejection;
+    if (rejection != null) {
+      return WorkDayCommandRejected(rejection);
+    }
+
+    _worked += now.difference(_runningSince!);
+    _runningSince = null;
+    _phase = WorkDayPhase.resting;
+    _restEndsAt = now.add(shortRestDuration);
+    _restOffered = false;
+    _nextRestAt = null;
+    _workIntervalStartedAt = null;
+    _events.add(WorkDayEvent.restStarted(now, RestKind.short));
+    return const WorkDayCommandAccepted();
+  }
+
+  /// Пропустить предложенный отдых: новый интервал работы начинается сразу
+  /// с момента пропуска, долг за пропуск не копится.
+  WorkDayCommandResult skipRest(DateTime now) {
+    _syncWithClock(now);
+
+    final rejection = _restCommandRejection;
+    if (rejection != null) {
+      return WorkDayCommandRejected(rejection);
+    }
+
+    _restOffered = false;
+    _nextRestAt = now.add(shortRestInterval);
+    _workIntervalStartedAt = now;
+    _events.add(WorkDayEvent.restSkipped(now, RestKind.short));
+    return const WorkDayCommandAccepted();
+  }
+
+  /// Почему команда отдыха не может выполниться прямо сейчас.
+  RejectionReason? get _restCommandRejection {
+    if (_phase == WorkDayPhase.resting) {
+      return RejectionReason.restInProgress;
+    }
+    if (_phase != WorkDayPhase.running || !_restOffered) {
+      return RejectionReason.restNotOffered;
+    }
+    return null;
+  }
+
   /// Поставить рабочий день на паузу: счёт рабочего времени замирает.
+  /// Предложенный отдых на паузе ждёт возобновления.
   WorkDayCommandResult pause(DateTime now) {
     _syncWithClock(now);
 
-    final rejection = switch (_phase) {
+    final rejection = switch (_visiblePhase) {
       WorkDayPhase.notStarted => RejectionReason.workDayNotStarted,
       WorkDayPhase.finished => RejectionReason.workDayAlreadyFinished,
       WorkDayPhase.paused => RejectionReason.workDayAlreadyPaused,
-      WorkDayPhase.running => null,
+      WorkDayPhase.resting => RejectionReason.restInProgress,
+      WorkDayPhase.running || WorkDayPhase.restOffered => null,
     };
     if (rejection != null) {
       return WorkDayCommandRejected(rejection);
@@ -60,39 +132,53 @@ final class WorkDayEngine {
 
     _worked += now.difference(_runningSince!);
     _runningSince = null;
+    _pausedAt = now;
     _phase = WorkDayPhase.paused;
     _events.add(WorkDayEvent.paused(now));
     return const WorkDayCommandAccepted();
   }
 
-  /// Продолжить рабочий день после паузы: счёт идёт с того же места.
+  /// Продолжить рабочий день после паузы: счёт идёт с того же места, а
+  /// следующий отдых сдвигается на длительность паузы.
   WorkDayCommandResult resume(DateTime now) {
     _syncWithClock(now);
 
     final rejection = switch (_phase) {
       WorkDayPhase.notStarted => RejectionReason.workDayNotStarted,
       WorkDayPhase.finished => RejectionReason.workDayAlreadyFinished,
-      WorkDayPhase.running => RejectionReason.workDayNotPaused,
       WorkDayPhase.paused => null,
+      WorkDayPhase.resting => RejectionReason.restInProgress,
+      WorkDayPhase.running ||
+      WorkDayPhase.restOffered => RejectionReason.workDayNotPaused,
     };
     if (rejection != null) {
       return WorkDayCommandRejected(rejection);
     }
 
+    if (!_restOffered) {
+      final next = _nextRestAt;
+      if (next != null) {
+        _nextRestAt = next.add(now.difference(_pausedAt!));
+      }
+    }
+    _pausedAt = null;
     _runningSince = now;
     _phase = WorkDayPhase.running;
     _events.add(WorkDayEvent.resumed(now));
     return const WorkDayCommandAccepted();
   }
 
-  /// Завершить рабочий день вручную.
+  /// Завершить рабочий день вручную. Идущий отдых при этом прерывается.
   WorkDayCommandResult finishWorkDay(DateTime now) {
     _syncWithClock(now);
 
     final rejection = switch (_phase) {
       WorkDayPhase.notStarted => RejectionReason.workDayNotStarted,
       WorkDayPhase.finished => RejectionReason.workDayAlreadyFinished,
-      WorkDayPhase.running || WorkDayPhase.paused => null,
+      WorkDayPhase.running ||
+      WorkDayPhase.paused ||
+      WorkDayPhase.restOffered ||
+      WorkDayPhase.resting => null,
     };
     if (rejection != null) {
       return WorkDayCommandRejected(rejection);
@@ -104,6 +190,11 @@ final class WorkDayEngine {
     }
     _phase = WorkDayPhase.finished;
     _finishedAt = now;
+    _nextRestAt = null;
+    _restOffered = false;
+    _restEndsAt = null;
+    _workIntervalStartedAt = null;
+    _pausedAt = null;
     _events.add(WorkDayEvent.finished(now, WorkDayFinishReason.manual));
     return const WorkDayCommandAccepted();
   }
@@ -113,18 +204,74 @@ final class WorkDayEngine {
     _syncWithClock(now);
 
     return WorkDaySnapshot(
-      phase: _phase,
+      phase: _visiblePhase,
       availableCommands: _availableCommands(now),
       worked: _workedAt(now),
       remainingInWorkWindow: _remainingInWorkWindow(now),
       startedAt: _startedAt,
       finishedAt: _finishedAt,
       workWindowEndsAt: _workWindowEndsAt,
+      workIntervalStartedAt: _workIntervalStartedAt,
+      restKind: _restKind,
+      nextRestAt: _nextRestAtWithinWindow,
+      untilNextRest: _untilNextRest(now),
+      remainingRest: _remainingRest(now),
       events: _events,
     );
   }
 
+  /// Фаза, которую видит оболочка: предложенный отдых — это идущий рабочий
+  /// день с активным предложением.
+  WorkDayPhase get _visiblePhase =>
+      _phase == WorkDayPhase.running && _restOffered
+      ? WorkDayPhase.restOffered
+      : _phase;
+
+  RestKind? get _restKind =>
+      _phase == WorkDayPhase.resting || _restOffered ? RestKind.short : null;
+
   void _syncWithClock(DateTime now) {
+    _completeRestIfDue(now);
+    _closeAtWorkWindowEndIfDue(now);
+    _offerRestIfDue(now);
+  }
+
+  /// Отдых заканчивается сам: новый интервал работы начинается с его конца.
+  void _completeRestIfDue(DateTime now) {
+    final endsAt = _restEndsAt;
+    if (_phase != WorkDayPhase.resting ||
+        endsAt == null ||
+        now.isBefore(endsAt)) {
+      return;
+    }
+
+    _restEndsAt = null;
+    final windowEndsAt = _workWindowEndsAt;
+    if (windowEndsAt != null && !endsAt.isBefore(windowEndsAt)) {
+      // Отдых доигран уже за концом окна: день закрывается по концу окна,
+      // а отдых записывается в журнал позже — по своему фактическому концу.
+      _phase = WorkDayPhase.finished;
+      _finishedAt = windowEndsAt;
+      _nextRestAt = null;
+      _workIntervalStartedAt = null;
+      _events.add(
+        WorkDayEvent.finished(
+          windowEndsAt,
+          WorkDayFinishReason.workWindowEnded,
+        ),
+      );
+      _events.add(WorkDayEvent.restFinished(endsAt, RestKind.short));
+      return;
+    }
+
+    _phase = WorkDayPhase.running;
+    _runningSince = endsAt;
+    _nextRestAt = endsAt.add(shortRestInterval);
+    _workIntervalStartedAt = endsAt;
+    _events.add(WorkDayEvent.restFinished(endsAt, RestKind.short));
+  }
+
+  void _closeAtWorkWindowEndIfDue(DateTime now) {
     final endsAt = _workWindowEndsAt;
     if (endsAt == null || now.isBefore(endsAt)) {
       return;
@@ -139,16 +286,78 @@ final class WorkDayEngine {
     }
     _phase = WorkDayPhase.finished;
     _finishedAt = endsAt;
+    _nextRestAt = null;
+    _restOffered = false;
+    _workIntervalStartedAt = null;
+    _pausedAt = null;
     _events.add(
       WorkDayEvent.finished(endsAt, WorkDayFinishReason.workWindowEnded),
     );
   }
 
+  void _offerRestIfDue(DateTime now) {
+    if (_phase != WorkDayPhase.running || _restOffered) {
+      return;
+    }
+    final next = _nextRestAtWithinWindow;
+    if (next == null || now.isBefore(next)) {
+      return;
+    }
+    _restOffered = true;
+    _events.add(WorkDayEvent.restOffered(next, RestKind.short));
+  }
+
+  /// Момент следующего отдыха, только если он ещё может наступить внутри
+  /// рабочего окна: отдых за концом окна не предлагается. Пока отдых предложен
+  /// или идёт, следующего момента ещё нет.
+  DateTime? get _nextRestAtWithinWindow {
+    if (_restOffered) {
+      return null;
+    }
+    final next = _nextRestAt;
+    final endsAt = _workWindowEndsAt;
+    if (next == null || endsAt == null || !next.isBefore(endsAt)) {
+      return null;
+    }
+    return next;
+  }
+
+  Duration? _untilNextRest(DateTime now) {
+    if (_restOffered) {
+      return Duration.zero;
+    }
+    if (_phase != WorkDayPhase.running && _phase != WorkDayPhase.paused) {
+      return null;
+    }
+    final next = _nextRestAtWithinWindow;
+    if (next == null) {
+      return null;
+    }
+    final reference = _phase == WorkDayPhase.paused ? _pausedAt! : now;
+    final remaining = next.difference(reference);
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  Duration? _remainingRest(DateTime now) {
+    final endsAt = _restEndsAt;
+    if (_phase != WorkDayPhase.resting || endsAt == null) {
+      return null;
+    }
+    final remaining = endsAt.difference(now);
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
   List<WorkDayCommand> _availableCommands(DateTime now) {
-    return switch (_phase) {
+    return switch (_visiblePhase) {
       WorkDayPhase.notStarted =>
         window.contains(now) ? const [WorkDayCommand.start] : const [],
       WorkDayPhase.running => const [
+        WorkDayCommand.pause,
+        WorkDayCommand.finish,
+      ],
+      WorkDayPhase.restOffered => const [
+        WorkDayCommand.startRest,
+        WorkDayCommand.skipRest,
         WorkDayCommand.pause,
         WorkDayCommand.finish,
       ],
@@ -156,6 +365,7 @@ final class WorkDayEngine {
         WorkDayCommand.resume,
         WorkDayCommand.finish,
       ],
+      WorkDayPhase.resting => const [WorkDayCommand.finish],
       WorkDayPhase.finished =>
         window.contains(now) ? const [WorkDayCommand.start] : const [],
     };
@@ -171,7 +381,10 @@ final class WorkDayEngine {
 
   Duration _remainingInWorkWindow(DateTime now) {
     final endsAt = switch (_phase) {
-      WorkDayPhase.running || WorkDayPhase.paused => _workWindowEndsAt!,
+      WorkDayPhase.running ||
+      WorkDayPhase.paused ||
+      WorkDayPhase.restOffered ||
+      WorkDayPhase.resting => _workWindowEndsAt!,
       WorkDayPhase.notStarted || WorkDayPhase.finished => window.endOn(now),
     };
     final remaining = endsAt.difference(now);

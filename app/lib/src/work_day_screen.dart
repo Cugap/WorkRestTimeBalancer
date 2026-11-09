@@ -47,6 +47,8 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
       WorkDayCommand.pause => widget.engine.pause(now),
       WorkDayCommand.resume => widget.engine.resume(now),
       WorkDayCommand.finish => widget.engine.finishWorkDay(now),
+      WorkDayCommand.startRest => widget.engine.startRest(now),
+      WorkDayCommand.skipRest => widget.engine.skipRest(now),
     };
 
     setState(() {
@@ -79,6 +81,24 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
+              if (snapshot.remainingRest != null) ...[
+                Text(
+                  formatClock(snapshot.remainingRest!),
+                  key: const ValueKey('rest-countdown'),
+                  style: theme.textTheme.displaySmall,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (snapshot.untilNextRest != null) ...[
+                Text(
+                  'До следующего отдыха: '
+                  '${formatClock(snapshot.untilNextRest!)}',
+                  key: const ValueKey('next-rest-countdown'),
+                  style: theme.textTheme.bodyLarge,
+                ),
+                const SizedBox(height: 8),
+              ],
               Text(
                 'До конца рабочего окна: '
                 '${formatHoursMinutes(snapshot.remainingInWorkWindow)}',

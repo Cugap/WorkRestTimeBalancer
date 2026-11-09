@@ -2,6 +2,7 @@
 library;
 
 export 'src/clock_time.dart';
+export 'src/rest_kind.dart';
 export 'src/work_day_command.dart';
 export 'src/work_day_engine.dart';
 export 'src/work_day_event.dart';

@@ -20,7 +20,9 @@ void main() {
 
   setUp(() {
     clock = FakeClock();
-    engine = WorkDayEngine();
+    // Механика дня проверяется отдельно от ритма: интервал отдыха длиннее
+    // рабочего окна, поэтому предложений отдыха в этих тестах нет.
+    engine = WorkDayEngine(shortRestInterval: const Duration(hours: 12));
   });
 
   group('рабочий день ещё не начат', () {
