@@ -1,2 +1,2 @@
-/// Вид отдыха.
-enum RestKind { short, long }
+/// Вид отдыха. Обед — отдельный вид: он не короткий и не длинный.
+enum RestKind { short, long, meal }

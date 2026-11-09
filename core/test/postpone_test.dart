@@ -39,6 +39,7 @@ void main() {
         WorkDayCommand.postponeRest,
         WorkDayCommand.pause,
         WorkDayCommand.finish,
+        WorkDayCommand.startMeal,
       ]);
 
       expect(engine.postponeRest(_at(9, 25)), isA<WorkDayCommandAccepted>());
@@ -53,6 +54,7 @@ void main() {
       expect(postponed.availableCommands, [
         WorkDayCommand.pause,
         WorkDayCommand.finish,
+        WorkDayCommand.startMeal,
       ]);
       expect(
         postponed.events.last,
@@ -103,6 +105,7 @@ void main() {
           WorkDayCommand.skipRest,
           WorkDayCommand.pause,
           WorkDayCommand.finish,
+          WorkDayCommand.startMeal,
         ]);
       },
     );

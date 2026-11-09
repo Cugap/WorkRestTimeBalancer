@@ -52,6 +52,7 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
       WorkDayCommand.finishRest => widget.engine.finishRest(now),
       WorkDayCommand.skipRest => widget.engine.skipRest(now),
       WorkDayCommand.postponeRest => widget.engine.postponeRest(now),
+      WorkDayCommand.startMeal => widget.engine.startMeal(now),
     };
 
     setState(() {
@@ -66,8 +67,7 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
   Future<void> _openRestScreen() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            RestScreen(engine: widget.engine, clock: widget.clock),
+        builder: (_) => RestScreen(engine: widget.engine, clock: widget.clock),
       ),
     );
     if (mounted) {
@@ -85,101 +85,109 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
-          child: ListView(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
-            shrinkWrap: true,
-            children: [
-              Text(
-                phaseTitle(snapshot.phase),
-                key: ValueKey('phase-${snapshot.phase.name}'),
-                style: theme.textTheme.headlineMedium,
-                textAlign: TextAlign.center,
-              ),
-              if (snapshot.restKind != null) ...[
-                const SizedBox(height: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 Text(
-                  restKindLabel(snapshot.restKind!),
-                  key: const ValueKey('rest-kind'),
-                  style: theme.textTheme.titleMedium,
+                  phaseTitle(snapshot.phase),
+                  key: ValueKey('phase-${snapshot.phase.name}'),
+                  style: theme.textTheme.headlineMedium,
                   textAlign: TextAlign.center,
                 ),
-              ],
-              const SizedBox(height: 24),
-              if (snapshot.remainingRest != null) ...[
-                Text(
-                  formatClock(snapshot.remainingRest!),
-                  key: const ValueKey('rest-countdown'),
-                  style: theme.textTheme.displaySmall,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (snapshot.untilNextRest != null) ...[
-                Text(
-                  'До следующего отдыха: '
-                  '${formatClock(snapshot.untilNextRest!)}',
-                  key: const ValueKey('next-rest-countdown'),
-                  style: theme.textTheme.bodyLarge,
-                ),
-                const SizedBox(height: 8),
-              ],
-              if (snapshot.phase == WorkDayPhase.restOffered) ...[
-                Text(
-                  snapshot.remainingPostponements == 0
-                      ? 'Отложить отдых больше нельзя'
-                      : 'Можно отложить ещё: '
-                            '${snapshot.remainingPostponements}',
-                  key: const ValueKey('postponements-left'),
-                  style: theme.textTheme.bodyLarge,
-                ),
-                const SizedBox(height: 8),
-              ],
-              Text(
-                'До конца рабочего окна: '
-                '${formatHoursMinutes(snapshot.remainingInWorkWindow)}',
-                style: theme.textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Отработано: '
-                '${formatHoursMinutes(snapshot.worked)}',
-                style: theme.textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 32),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                alignment: WrapAlignment.center,
-                children: [
-                  for (final command in snapshot.availableCommands)
-                    FilledButton(
-                      key: ValueKey('command-${command.name}'),
-                      onPressed: () => _dispatchCommand(command),
-                      child: Text(commandLabel(command, snapshot.phase)),
-                    ),
-                ],
-              ),
-              if (snapshot.phase == WorkDayPhase.restOffered ||
-                  snapshot.phase == WorkDayPhase.resting) ...[
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  key: const ValueKey('open-rest-screen'),
-                  onPressed: _openRestScreen,
-                  icon: const Icon(Icons.self_improvement),
-                  label: const Text('Экран отдыха'),
-                ),
-              ],
-              if (_rejection != null) ...[
-                const SizedBox(height: 24),
-                Text(
-                  rejectionText(_rejection!),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.error,
+                if (snapshot.restKind != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    restKindLabel(snapshot.restKind!),
+                    key: const ValueKey('rest-kind'),
+                    style: theme.textTheme.titleMedium,
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
+                ],
+                const SizedBox(height: 24),
+                if (snapshot.remainingRest != null) ...[
+                  Text(
+                    formatClock(snapshot.remainingRest!),
+                    key: const ValueKey('rest-countdown'),
+                    style: theme.textTheme.displaySmall,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (snapshot.untilNextRest != null) ...[
+                  Text(
+                    'До следующего отдыха: '
+                    '${formatClock(snapshot.untilNextRest!)}',
+                    key: const ValueKey('next-rest-countdown'),
+                    style: theme.textTheme.bodyLarge,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                if (snapshot.phase == WorkDayPhase.restOffered) ...[
+                  Text(
+                    snapshot.remainingPostponements == 0
+                        ? 'Отложить отдых больше нельзя'
+                        : 'Можно отложить ещё: '
+                              '${snapshot.remainingPostponements}',
+                    key: const ValueKey('postponements-left'),
+                    style: theme.textTheme.bodyLarge,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                Text(
+                  'До конца рабочего окна: '
+                  '${formatHoursMinutes(snapshot.remainingInWorkWindow)}',
+                  style: theme.textTheme.bodyLarge,
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  'Отработано: '
+                  '${formatHoursMinutes(snapshot.worked)}',
+                  style: theme.textTheme.bodyLarge,
+                ),
+                const SizedBox(height: 32),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    for (final command in snapshot.availableCommands)
+                      FilledButton(
+                        key: ValueKey('command-${command.name}'),
+                        onPressed: () => _dispatchCommand(command),
+                        child: Text(
+                          commandLabel(
+                            command,
+                            snapshot.phase,
+                            restKind: snapshot.restKind,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                if (snapshot.phase == WorkDayPhase.restOffered ||
+                    snapshot.phase == WorkDayPhase.resting) ...[
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    key: const ValueKey('open-rest-screen'),
+                    onPressed: _openRestScreen,
+                    icon: const Icon(Icons.self_improvement),
+                    label: const Text('Экран отдыха'),
+                  ),
+                ],
+                if (_rejection != null) ...[
+                  const SizedBox(height: 24),
+                  Text(
+                    rejectionText(_rejection!),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

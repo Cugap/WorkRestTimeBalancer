@@ -59,6 +59,7 @@ class _RestScreenState extends State<RestScreen> {
       WorkDayCommand.finishRest => widget.engine.finishRest(now),
       WorkDayCommand.skipRest => widget.engine.skipRest(now),
       WorkDayCommand.postponeRest => widget.engine.postponeRest(now),
+      WorkDayCommand.startMeal => widget.engine.startMeal(now),
       WorkDayCommand.pause => widget.engine.pause(now),
       WorkDayCommand.resume => widget.engine.resume(now),
       WorkDayCommand.finish => widget.engine.finishWorkDay(now),
@@ -100,75 +101,83 @@ class _RestScreenState extends State<RestScreen> {
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
-          child: ListView(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
-            shrinkWrap: true,
-            children: [
-              if (restKind != null) ...[
-                Text(
-                  restKindLabel(restKind),
-                  key: const ValueKey('rest-screen-kind'),
-                  style: theme.textTheme.titleMedium,
-                  textAlign: TextAlign.center,
-                ),
-                if (!resting && snapshot.restDuration != null) ...[
-                  const SizedBox(height: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (restKind != null) ...[
                   Text(
-                    'Длительность: '
-                    '${formatHoursMinutes(snapshot.restDuration!)}',
-                    key: const ValueKey('rest-screen-duration'),
-                    style: theme.textTheme.bodyLarge,
+                    restKindLabel(restKind),
+                    key: const ValueKey('rest-screen-kind'),
+                    style: theme.textTheme.titleMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  if (!resting && snapshot.restDuration != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Длительность: '
+                      '${formatHoursMinutes(snapshot.restDuration!)}',
+                      key: const ValueKey('rest-screen-duration'),
+                      style: theme.textTheme.bodyLarge,
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                ],
+                if (resting) ...[
+                  Text(
+                    formatClock(snapshot.remainingRest ?? Duration.zero),
+                    key: const ValueKey('rest-screen-countdown'),
+                    style: theme.textTheme.displaySmall,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+                  for (final (index, exercise) in snapshot.exercises.indexed)
+                    _ExerciseCard(index: index, exercise: exercise),
+                  const SizedBox(height: 32),
+                  FilledButton(
+                    key: const ValueKey('rest-command-finishRest'),
+                    onPressed: () =>
+                        _dispatchCommand(WorkDayCommand.finishRest),
+                    child: const Text('Закончить сейчас'),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      for (final command in snapshot.availableCommands)
+                        if (command == WorkDayCommand.startRest ||
+                            command == WorkDayCommand.skipRest)
+                          FilledButton(
+                            key: ValueKey('rest-command-${command.name}'),
+                            onPressed: () => _dispatchCommand(command),
+                            child: Text(
+                              commandLabel(
+                                command,
+                                snapshot.phase,
+                                restKind: snapshot.restKind,
+                              ),
+                            ),
+                          ),
+                    ],
+                  ),
+                ],
+                if (_rejection != null) ...[
+                  const SizedBox(height: 24),
+                  Text(
+                    rejectionText(_rejection!),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ],
-                const SizedBox(height: 12),
               ],
-              if (resting) ...[
-                Text(
-                  formatClock(snapshot.remainingRest ?? Duration.zero),
-                  key: const ValueKey('rest-screen-countdown'),
-                  style: theme.textTheme.displaySmall,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 32),
-                for (final (index, exercise) in snapshot.exercises.indexed)
-                  _ExerciseCard(index: index, exercise: exercise),
-                const SizedBox(height: 32),
-                FilledButton(
-                  key: const ValueKey('rest-command-finishRest'),
-                  onPressed: () =>
-                      _dispatchCommand(WorkDayCommand.finishRest),
-                  child: const Text('Закончить сейчас'),
-                ),
-              ] else ...[
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    for (final command in snapshot.availableCommands)
-                      if (command == WorkDayCommand.startRest ||
-                          command == WorkDayCommand.skipRest)
-                        FilledButton(
-                          key: ValueKey('rest-command-${command.name}'),
-                          onPressed: () => _dispatchCommand(command),
-                          child: Text(commandLabel(command, snapshot.phase)),
-                        ),
-                  ],
-                ),
-              ],
-              if (_rejection != null) ...[
-                const SizedBox(height: 24),
-                Text(
-                  rejectionText(_rejection!),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.error,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ],
+            ),
           ),
         ),
       ),
