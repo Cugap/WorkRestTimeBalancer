@@ -249,6 +249,11 @@ void main() {
         ),
       );
       engine.finishWorkDay(_at(12));
+      engine.recordExport(_at(12, 5));
+      // Импорт собственного документа заменяет настройки и журнал теми же
+      // данными и дописывает событие импорта: так в журнале оказываются все
+      // виды событий, включая перенос.
+      engine.applyImportedDocument(_at(12, 10), engine.document());
 
       final events = engine.document().journal;
       final types = events.map((event) => event.type).toSet();
@@ -263,7 +268,9 @@ void main() {
             event.type != WorkDayEventType.workDayPaused &&
             event.type != WorkDayEventType.workDayResumed &&
             event.type != WorkDayEventType.workDayFinished &&
-            event.type != WorkDayEventType.settingsChanged,
+            event.type != WorkDayEventType.settingsChanged &&
+            event.type != WorkDayEventType.dataExported &&
+            event.type != WorkDayEventType.dataImported,
       )) {
         expect(event.restKind, isNotNull, reason: '${event.type}');
         expect(event.plannedDuration, isNotNull, reason: '${event.type}');

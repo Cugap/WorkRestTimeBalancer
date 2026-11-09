@@ -29,11 +29,16 @@ class SettingsScreen extends StatefulWidget {
     super.key,
     required this.engine,
     required this.clock,
+    required this.transfer,
     this.onStateChanged,
   });
 
   final WorkDayEngine engine;
   final Clock clock;
+
+  /// Экспорт и импорт документа: ядро решает, что попадает в файл, экран лишь
+  /// спрашивает подтверждение и показывает причину отказа.
+  final DocumentTransfer transfer;
 
   /// Вызывается после принятого изменения настроек, чтобы оболочка сохранила
   /// документ ядра.
@@ -50,6 +55,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   _Field? _errorField;
   String? _errorText;
+  String? _transferError;
 
   @override
   void initState() {
@@ -172,6 +178,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _errorField = field;
       _errorText = 'Проверьте формат значения';
     });
+  }
+
+  Future<void> _export() async {
+    final outcome = await widget.transfer.export(widget.clock.now());
+    if (!mounted || outcome is! ExportSaved) {
+      return;
+    }
+    setState(() => _transferError = null);
+    // Событие экспорта уже в журнале — сохраняем его на устройстве.
+    widget.onStateChanged?.call();
+  }
+
+  Future<void> _import() async {
+    final selection = await widget.transfer.selectImport();
+    if (!mounted) {
+      return;
+    }
+    switch (selection) {
+      case ImportCancelled():
+        return;
+      case ImportRejected(:final message):
+        setState(() => _transferError = message);
+        return;
+      case ImportRead(:final document):
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            key: const ValueKey('import-confirmation'),
+            title: const Text('Импорт данных'),
+            content: Text(
+              'Заменить настройки и журнал событий данными из файла? '
+              'В файле событий: ${document.journal.length}. '
+              'Идущий рабочий день, отдых и предложение отдыха не изменятся.',
+            ),
+            actions: [
+              TextButton(
+                key: const ValueKey('import-cancel'),
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Отмена'),
+              ),
+              FilledButton(
+                key: const ValueKey('import-confirm'),
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Заменить'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true || !mounted) {
+          return;
+        }
+        widget.transfer.applyImport(widget.clock.now(), document);
+        _fill(widget.engine.snapshot(widget.clock.now()).settings);
+        setState(() => _transferError = null);
+        widget.onStateChanged?.call();
+    }
   }
 
   _Field? _fieldFor(RejectionReason reason) => switch (reason) {
@@ -299,6 +361,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onPressed: _reset,
                   child: const Text('По умолчанию'),
                 ),
+                const SizedBox(height: 24),
+                Text('Данные', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  key: const ValueKey('settings-export'),
+                  onPressed: _export,
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('Экспорт в файл'),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  key: const ValueKey('settings-import'),
+                  onPressed: _import,
+                  icon: const Icon(Icons.download),
+                  label: const Text('Импорт из файла'),
+                ),
+                if (_transferError != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _transferError!,
+                    key: const ValueKey('settings-transfer-error'),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ],
             ),
           ),

@@ -129,6 +129,31 @@ final class WorkDayEngine {
     day: _phase == WorkDayPhase.notStarted ? null : _state(),
   );
 
+  /// Отметить в журнале, что настройки и журнал сохранены в файл переноса.
+  void recordExport(DateTime now) {
+    _events.add(WorkDayEvent.dataExported(_syncWithClock(now)));
+  }
+
+  /// Заменить настройки и журнал импортированным документом с момента [now].
+  ///
+  /// Идущий рабочий день не трогается: фаза, начало интервала работы, идущий
+  /// отдых и показанное предложение остаются прежними, а новые настройки лишь
+  /// применяются к расчёту следующих отдыхов. Состояние дня из документа
+  /// игнорируется — переносится только то, что спецификация называет данными.
+  /// Момент импорта дописывается в конец нового журнала.
+  void applyImportedDocument(DateTime now, PersistedDocument imported) {
+    now = _syncWithClock(now);
+
+    final previous = _settings;
+    _settings = imported.settings;
+    _events
+      ..clear()
+      ..addAll(imported.journal)
+      ..add(WorkDayEvent.dataImported(now));
+    _lastRestFinished = _lastRestFinishedInJournal();
+    _applySettingsToSchedule(now, previous);
+  }
+
   WorkDayState _state() => WorkDayState(
     lastObservedAt: _lastObservedAt,
     phase: _phase,

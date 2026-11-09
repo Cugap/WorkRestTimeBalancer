@@ -438,6 +438,8 @@ WorkDayEvent _eventFromJson(Map<String, Object?> json) {
       actualDuration: _durationOrNull(json, 'actualDurationMs'),
     ),
     WorkDayEventType.settingsChanged => WorkDayEvent.settingsChanged(at),
+    WorkDayEventType.dataExported => WorkDayEvent.dataExported(at),
+    WorkDayEventType.dataImported => WorkDayEvent.dataImported(at),
   };
 }
 
