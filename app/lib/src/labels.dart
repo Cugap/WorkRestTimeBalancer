@@ -43,9 +43,31 @@ String commandLabel(WorkDayCommand command, WorkDayPhase phase) =>
       WorkDayCommand.resume => 'Продолжить',
       WorkDayCommand.finish => 'Завершить',
       WorkDayCommand.startRest => 'Начать отдых',
+      WorkDayCommand.finishRest => 'Закончить сейчас',
       WorkDayCommand.skipRest => 'Пропустить',
       WorkDayCommand.postponeRest => 'Отложить на 5 минут',
     };
+
+String restKindLabel(RestKind kind) => switch (kind) {
+  RestKind.short => 'Короткий отдых',
+};
+
+String exerciseCategoryLabel(ExerciseCategory category) => switch (category) {
+  ExerciseCategory.eyes => 'Глаза',
+  ExerciseCategory.hands => 'Руки',
+  ExerciseCategory.body => 'Тело',
+};
+
+/// Длительность упражнения: секунды или минуты с секундами.
+String formatExerciseDuration(Duration duration) {
+  final totalSeconds = duration.inSeconds;
+  if (totalSeconds < Duration.secondsPerMinute) {
+    return '$totalSeconds с';
+  }
+  final minutes = totalSeconds ~/ Duration.secondsPerMinute;
+  final seconds = totalSeconds % Duration.secondsPerMinute;
+  return seconds == 0 ? '$minutes мин' : '$minutes мин $seconds с';
+}
 
 String rejectionText(RejectionReason reason) => switch (reason) {
   RejectionReason.workDayNotStarted => 'Рабочий день ещё не начат',
@@ -58,4 +80,5 @@ String rejectionText(RejectionReason reason) => switch (reason) {
   RejectionReason.restInProgress => 'Сначала дождитесь конца отдыха',
   RejectionReason.postponeLimitReached =>
     'Отдых уже отложен дважды: можно начать или пропустить',
+  RejectionReason.restNotInProgress => 'Отдых сейчас не идёт',
 };

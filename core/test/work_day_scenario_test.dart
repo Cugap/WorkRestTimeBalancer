@@ -23,6 +23,7 @@ WorkDayCommandResult? _dispatch(
   WorkDayCommand.resume => day.resume(now),
   WorkDayCommand.finish => day.finishWorkDay(now),
   WorkDayCommand.startRest => day.startRest(now),
+  WorkDayCommand.finishRest => day.finishRest(now),
   WorkDayCommand.skipRest => day.skipRest(now),
   WorkDayCommand.postponeRest => day.postponeRest(now),
   null => null,
@@ -403,5 +404,66 @@ void main() {
         nextRestAt: null,
       ),
     ]);
+  });
+
+  test('сценарий: досрочное завершение отдыха продолжает ритм', () {
+    _runScenario([
+      (
+        at: Duration.zero,
+        command: WorkDayCommand.start,
+        phase: WorkDayPhase.running,
+        worked: Duration.zero,
+        rejection: null,
+      ),
+      (
+        at: const Duration(minutes: 25),
+        command: null,
+        phase: WorkDayPhase.restOffered,
+        worked: const Duration(minutes: 25),
+        rejection: null,
+      ),
+      (
+        at: const Duration(minutes: 25),
+        command: WorkDayCommand.startRest,
+        phase: WorkDayPhase.resting,
+        worked: const Duration(minutes: 25),
+        rejection: null,
+      ),
+      (
+        at: const Duration(minutes: 27),
+        command: WorkDayCommand.finishRest,
+        phase: WorkDayPhase.running,
+        worked: const Duration(minutes: 25),
+        rejection: null,
+      ),
+      (
+        at: const Duration(minutes: 52),
+        command: null,
+        phase: WorkDayPhase.restOffered,
+        worked: const Duration(minutes: 50),
+        rejection: null,
+      ),
+      (
+        at: const Duration(minutes: 52),
+        command: WorkDayCommand.startRest,
+        phase: WorkDayPhase.resting,
+        worked: const Duration(minutes: 50),
+        rejection: null,
+      ),
+      (
+        at: const Duration(minutes: 53),
+        command: WorkDayCommand.finishRest,
+        phase: WorkDayPhase.running,
+        worked: const Duration(minutes: 50),
+        rejection: null,
+      ),
+      (
+        at: const Duration(minutes: 78),
+        command: null,
+        phase: WorkDayPhase.restOffered,
+        worked: const Duration(minutes: 75),
+        rejection: null,
+      ),
+    ], engine: WorkDayEngine());
   });
 }

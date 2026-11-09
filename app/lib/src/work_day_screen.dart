@@ -5,6 +5,7 @@ import 'package:work_rest_core/work_rest_core.dart';
 
 import 'clock.dart';
 import 'labels.dart';
+import 'rest_screen.dart';
 
 /// Главный экран: показывает снимок ядра и отправляет команды.
 class WorkDayScreen extends StatefulWidget {
@@ -48,6 +49,7 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
       WorkDayCommand.resume => widget.engine.resume(now),
       WorkDayCommand.finish => widget.engine.finishWorkDay(now),
       WorkDayCommand.startRest => widget.engine.startRest(now),
+      WorkDayCommand.finishRest => widget.engine.finishRest(now),
       WorkDayCommand.skipRest => widget.engine.skipRest(now),
       WorkDayCommand.postponeRest => widget.engine.postponeRest(now),
     };
@@ -59,6 +61,18 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
       };
       _snapshot = widget.engine.snapshot(now);
     });
+  }
+
+  Future<void> _openRestScreen() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            RestScreen(engine: widget.engine, clock: widget.clock),
+      ),
+    );
+    if (mounted) {
+      _refresh();
+    }
   }
 
   @override
@@ -136,6 +150,16 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
                     ),
                 ],
               ),
+              if (snapshot.phase == WorkDayPhase.restOffered ||
+                  snapshot.phase == WorkDayPhase.resting) ...[
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  key: const ValueKey('open-rest-screen'),
+                  onPressed: _openRestScreen,
+                  icon: const Icon(Icons.self_improvement),
+                  label: const Text('Экран отдыха'),
+                ),
+              ],
               if (_rejection != null) ...[
                 const SizedBox(height: 24),
                 Text(

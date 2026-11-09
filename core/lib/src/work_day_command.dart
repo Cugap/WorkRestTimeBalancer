@@ -26,6 +26,7 @@ enum WorkDayCommand {
   resume,
   finish,
   startRest,
+  finishRest,
   skipRest,
   postponeRest,
 }
@@ -48,6 +49,9 @@ enum RejectionReason {
   /// Отложений в этой цепочке предложений больше нет: отдых можно только
   /// начать или пропустить.
   postponeLimitReached,
+
+  /// Отдых сейчас не идёт, поэтому его нельзя завершить досрочно.
+  restNotInProgress,
 }
 
 /// Результат команды рабочего дня.
