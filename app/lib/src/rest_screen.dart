@@ -9,10 +9,19 @@ import 'labels.dart';
 /// Полноэкранный экран отдыха. Всё, что он показывает, берётся из снимка ядра:
 /// таймером владеет ядро, поэтому закрытие экрана отдых не прерывает.
 class RestScreen extends StatefulWidget {
-  const RestScreen({super.key, required this.engine, required this.clock});
+  const RestScreen({
+    super.key,
+    required this.engine,
+    required this.clock,
+    this.onStateChanged,
+  });
 
   final WorkDayEngine engine;
   final Clock clock;
+
+  /// Вызывается после каждого принятого изменения состояния, чтобы оболочка
+  /// сохранила документ ядра.
+  final VoidCallback? onStateChanged;
 
   @override
   State<RestScreen> createState() => _RestScreenState();
@@ -67,6 +76,9 @@ class _RestScreenState extends State<RestScreen> {
     };
 
     final snapshot = widget.engine.snapshot(now);
+    if (result is WorkDayCommandAccepted) {
+      widget.onStateChanged?.call();
+    }
     if (!_isRestPhase(snapshot.phase)) {
       Navigator.of(context).maybePop();
       return;

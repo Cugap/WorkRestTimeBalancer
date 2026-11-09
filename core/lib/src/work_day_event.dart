@@ -61,33 +61,41 @@ final class WorkDayEvent {
       plannedDuration = null,
       actualDuration = null;
 
-  const WorkDayEvent.restOffered(this.at, RestKind this.restKind)
-    : type = WorkDayEventType.restOffered,
-      finishReason = null,
-      restFinishReason = null,
-      plannedDuration = null,
-      actualDuration = null;
+  const WorkDayEvent.restOffered(
+    this.at,
+    RestKind this.restKind, {
+    this.plannedDuration,
+  }) : type = WorkDayEventType.restOffered,
+       finishReason = null,
+       restFinishReason = null,
+       actualDuration = null;
 
-  const WorkDayEvent.restStarted(this.at, RestKind this.restKind)
-    : type = WorkDayEventType.restStarted,
-      finishReason = null,
-      restFinishReason = null,
-      plannedDuration = null,
-      actualDuration = null;
+  const WorkDayEvent.restStarted(
+    this.at,
+    RestKind this.restKind, {
+    this.plannedDuration,
+  }) : type = WorkDayEventType.restStarted,
+       finishReason = null,
+       restFinishReason = null,
+       actualDuration = null;
 
-  const WorkDayEvent.restSkipped(this.at, RestKind this.restKind)
-    : type = WorkDayEventType.restSkipped,
-      finishReason = null,
-      restFinishReason = null,
-      plannedDuration = null,
-      actualDuration = null;
+  const WorkDayEvent.restSkipped(
+    this.at,
+    RestKind this.restKind, {
+    this.plannedDuration,
+  }) : type = WorkDayEventType.restSkipped,
+       finishReason = null,
+       restFinishReason = null,
+       actualDuration = null;
 
-  const WorkDayEvent.restPostponed(this.at, RestKind this.restKind)
-    : type = WorkDayEventType.restPostponed,
-      finishReason = null,
-      restFinishReason = null,
-      plannedDuration = null,
-      actualDuration = null;
+  const WorkDayEvent.restPostponed(
+    this.at,
+    RestKind this.restKind, {
+    this.plannedDuration,
+  }) : type = WorkDayEventType.restPostponed,
+       finishReason = null,
+       restFinishReason = null,
+       actualDuration = null;
 
   const WorkDayEvent.restFinished(
     this.at,

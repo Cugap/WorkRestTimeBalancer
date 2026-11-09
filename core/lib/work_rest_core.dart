@@ -4,6 +4,8 @@ library;
 export 'src/clock_time.dart';
 export 'src/exercise.dart';
 export 'src/exercise_catalog.dart';
+export 'src/local_document_store.dart';
+export 'src/persisted_document.dart';
 export 'src/rest_kind.dart';
 export 'src/rhythm_settings.dart';
 export 'src/settings_validation.dart';

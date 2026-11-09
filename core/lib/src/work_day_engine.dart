@@ -1,5 +1,6 @@
 import 'exercise.dart';
 import 'exercise_catalog.dart';
+import 'persisted_document.dart';
 import 'rest_kind.dart';
 import 'rhythm_settings.dart';
 import 'settings_validation.dart';
@@ -10,8 +11,11 @@ import 'work_window.dart';
 
 /// Движок рабочего дня. Не читает системное время: каждый вызов получает момент
 /// от оболочки, поэтому поведение полностью воспроизводимо в тестах.
-/// Оболочка обязана передавать неубывающее время — тогда перевод системных
-/// часов назад не сдвигает ритм.
+///
+/// Время внутри одного запуска обязано не убывать. Движок сам держит эту
+/// границу: момент, который меньше последнего увиденного, считается тем же
+/// последним моментом. Поэтому перевод системных часов назад — до или после
+/// перезапуска — не отматывает ритм и не повторяет события.
 final class WorkDayEngine {
   /// Настройки, переданные сюда, считаются доверенными: значения по умолчанию
   /// или восстановленные из хранилища. Диапазоны для ввода пользователя
@@ -22,6 +26,30 @@ final class WorkDayEngine {
     this.maxPostponements = 2,
     this.catalog = exerciseCatalog,
   }) : _settings = settings;
+
+  /// Восстановить движок из документа: настройки, журнал и, если он есть,
+  /// текущий рабочий день. Состояние дня применяется как есть; отставание по
+  /// времени разбирает первая синхронизация — как будто приложение было
+  /// закрыто с момента [WorkDayState.lastObservedAt].
+  factory WorkDayEngine.restore(
+    PersistedDocument document, {
+    Duration postponeDuration = const Duration(minutes: 5),
+    int maxPostponements = 2,
+    List<Exercise> catalog = exerciseCatalog,
+  }) {
+    final engine = WorkDayEngine(
+      settings: document.settings,
+      postponeDuration: postponeDuration,
+      maxPostponements: maxPostponements,
+      catalog: catalog,
+    );
+    engine._events.addAll(document.journal);
+    final day = document.day;
+    if (day != null) {
+      engine._applyState(day);
+    }
+    return engine;
+  }
 
   /// Действующие настройки ритма и рабочего окна.
   RhythmSettings _settings;
@@ -84,9 +112,94 @@ final class WorkDayEngine {
   Duration _worked = Duration.zero;
   final List<WorkDayEvent> _events = <WorkDayEvent>[];
 
+  /// Последний момент, который движок уже обработал. Нижняя граница времени:
+  /// всё, что раньше, считается этим моментом.
+  DateTime? _lastObservedAt;
+
+  /// Момент последнего наблюдения на сохранении: с него начинается разбор
+  /// времени, прошедшего при закрытом приложении. Живёт только до первой
+  /// синхронизации после восстановления.
+  DateTime? _closedSince;
+
+  /// Собрать документ из текущего состояния. Состояние дня отсутствует, пока
+  /// рабочий день не начат; журнал и настройки сохраняются всегда.
+  PersistedDocument document() => PersistedDocument(
+    settings: _settings,
+    journal: _events,
+    day: _phase == WorkDayPhase.notStarted ? null : _state(),
+  );
+
+  WorkDayState _state() => WorkDayState(
+    lastObservedAt: _lastObservedAt,
+    phase: _phase,
+    startedAt: _startedAt,
+    finishedAt: _finishedAt,
+    runningSince: _runningSince,
+    pausedAt: _pausedAt,
+    workWindowEndsAt: _workWindowEndsAt,
+    nextShortRestAt: _nextShortRestAt,
+    nextLongRestAt: _nextLongRestAt,
+    nextMealAt: _nextMealAt,
+    mealTaken: _mealTaken,
+    nextRestAt: _nextRestAt,
+    offerKind: _offerKind,
+    currentRestKind: _currentRestKind,
+    restOffered: _restOffered,
+    restEndsAt: _restEndsAt,
+    restStartedAt: _restStartedAt,
+    restPlannedDuration: _restPlannedDuration,
+    workIntervalStartedAt: _workIntervalStartedAt,
+    postponesUsed: _postponesUsed,
+    restExercises: _restExercises,
+    nextExerciseIndex: _nextExerciseIndex,
+    worked: _worked,
+  );
+
+  void _applyState(WorkDayState state) {
+    _phase = state.phase;
+    _startedAt = state.startedAt;
+    _finishedAt = state.finishedAt;
+    _runningSince = state.runningSince;
+    _pausedAt = state.pausedAt;
+    _workWindowEndsAt = state.workWindowEndsAt;
+    _nextShortRestAt = state.nextShortRestAt;
+    _nextLongRestAt = state.nextLongRestAt;
+    _nextMealAt = state.nextMealAt;
+    _mealTaken = state.mealTaken;
+    _nextRestAt = state.nextRestAt;
+    _offerKind = state.offerKind;
+    _currentRestKind = state.currentRestKind;
+    _restOffered = state.restOffered;
+    _restEndsAt = state.restEndsAt;
+    _restStartedAt = state.restStartedAt;
+    _restPlannedDuration = state.restPlannedDuration;
+    _workIntervalStartedAt = state.workIntervalStartedAt;
+    _postponesUsed = state.postponesUsed;
+    _restExercises = state.restExercises;
+    _nextExerciseIndex = state.nextExerciseIndex;
+    _worked = state.worked;
+    _lastObservedAt = state.lastObservedAt;
+    _closedSince = state.lastObservedAt;
+    _lastRestFinished = _lastRestFinishedInJournal();
+  }
+
+  /// Последнее завершение отдыха в журнале текущего рабочего дня: снимок
+  /// восстанавливает его по журналу, а не хранит второй копией.
+  WorkDayEvent? _lastRestFinishedInJournal() {
+    for (final event in _events.reversed) {
+      if (event.type == WorkDayEventType.restFinished) {
+        return event;
+      }
+      if (event.type == WorkDayEventType.workDayStarted) {
+        return null;
+      }
+    }
+    return null;
+  }
+
   /// Начать рабочий день.
   WorkDayCommandResult startWorkDay(DateTime now) {
-    _syncWithClock(now);
+    now = _syncWithClock(now);
 
     if (_visiblePhase != WorkDayPhase.notStarted &&
         _visiblePhase != WorkDayPhase.finished) {
@@ -125,7 +238,7 @@ final class WorkDayEngine {
   /// Начать предложенный отдых: работа замирает, идёт таймер отдыха.
   /// Упражнения выбираются по кругу один раз — на момент начала отдыха.
   WorkDayCommandResult startRest(DateTime now) {
-    _syncWithClock(now);
+    now = _syncWithClock(now);
 
     final rejection = _restCommandRejection;
     if (rejection != null) {
@@ -140,7 +253,7 @@ final class WorkDayEngine {
   /// назначенного времени. Ручной обед считается состоявшимся: повторно в
   /// этом рабочем дне он не предлагается и не начинается.
   WorkDayCommandResult startMeal(DateTime now) {
-    _syncWithClock(now);
+    now = _syncWithClock(now);
 
     final rejection = switch (_phase) {
       WorkDayPhase.notStarted => RejectionReason.workDayNotStarted,
@@ -180,13 +293,15 @@ final class WorkDayEngine {
       _mealTaken = true;
       _nextMealAt = null;
     }
-    _events.add(WorkDayEvent.restStarted(now, kind));
+    _events.add(
+      WorkDayEvent.restStarted(now, kind, plannedDuration: _restPlannedDuration),
+    );
   }
 
   /// Завершить идущий отдых досрочно: новый интервал работы начинается с этого
   /// момента, и ритм продолжается от него.
   WorkDayCommandResult finishRest(DateTime now) {
-    _syncWithClock(now);
+    now = _syncWithClock(now);
 
     if (_phase != WorkDayPhase.resting) {
       return const WorkDayCommandRejected(RejectionReason.restNotInProgress);
@@ -205,17 +320,24 @@ final class WorkDayEngine {
   /// пропуск случился позже этого срока — от момента пропуска. Так пропуск не
   /// создаёт ни долга, ни немедленного повторного предложения.
   WorkDayCommandResult skipRest(DateTime now) {
-    _syncWithClock(now);
+    now = _syncWithClock(now);
 
     final rejection = _restCommandRejection;
     if (rejection != null) {
       return WorkDayCommandRejected(rejection);
     }
 
-    final kind = _currentRestKind!;
+    _skipAt(now, _currentRestKind!);
+    return const WorkDayCommandAccepted();
+  }
+
+  /// Правила пропуска в момент [at] для отдыха [kind]. Пропуск не создаёт
+  /// долга: счётчик короткого отдыха начинается заново, счётчик длинного не
+  /// обнуляется, а новый интервал работы начинается с момента пропуска.
+  void _skipAt(DateTime at, RestKind kind) {
     _restOffered = false;
     _currentRestKind = null;
-    _nextShortRestAt = now.add(_settings.shortRestInterval);
+    _nextShortRestAt = at.add(_settings.shortRestInterval);
     if (kind == RestKind.meal) {
       // Пропуск обеда ничего не переносит: следующий обед будет только в
       // новом рабочем дне, а длинный счётчик не сбрасывается. Новый интервал
@@ -224,31 +346,36 @@ final class WorkDayEngine {
       _nextMealAt = null;
     }
     if (kind == RestKind.long) {
-      final planned = _nextLongRestAt ?? now;
+      final planned = _nextLongRestAt ?? at;
       final nextLong = planned.add(_settings.longRestInterval);
-      _nextLongRestAt = nextLong.isAfter(now)
+      _nextLongRestAt = nextLong.isAfter(at)
           ? nextLong
-          : now.add(_settings.longRestInterval);
+          : at.add(_settings.longRestInterval);
     } else {
       // Обед с приоритетом мог вытеснить длинный отдых, точка которого уже
       // прошла: сдвигаем её так, чтобы пропуск не создавал долга.
       final longAt = _nextLongRestAt;
-      if (longAt != null && !longAt.isAfter(now)) {
-        _nextLongRestAt = now.add(_settings.longRestInterval);
+      if (longAt != null && !longAt.isAfter(at)) {
+        _nextLongRestAt = at.add(_settings.longRestInterval);
       }
     }
     _scheduleNextOffer();
-    _workIntervalStartedAt = now;
+    _workIntervalStartedAt = at;
     _postponesUsed = 0;
-    _events.add(WorkDayEvent.restSkipped(now, kind));
-    return const WorkDayCommandAccepted();
+    _events.add(
+      WorkDayEvent.restSkipped(
+        at,
+        kind,
+        plannedDuration: _restDurationFor(kind),
+      ),
+    );
   }
 
   /// Отложить предложенный отдых: предложение вернётся через
   /// [postponeDuration], а время работы продолжит идти. Допускается не больше
   /// [maxPostponements] отложений подряд.
   WorkDayCommandResult postponeRest(DateTime now) {
-    _syncWithClock(now);
+    now = _syncWithClock(now);
 
     final rejection = _restCommandRejection;
     if (rejection != null) {
@@ -266,7 +393,13 @@ final class WorkDayEngine {
     if (kind == RestKind.meal) {
       _nextMealAt = _nextRestAt;
     }
-    _events.add(WorkDayEvent.restPostponed(now, kind));
+    _events.add(
+      WorkDayEvent.restPostponed(
+        now,
+        kind,
+        plannedDuration: _restDurationFor(kind),
+      ),
+    );
     return const WorkDayCommandAccepted();
   }
 
@@ -284,7 +417,7 @@ final class WorkDayEngine {
   /// Поставить рабочий день на паузу: счёт рабочего времени замирает.
   /// Предложенный отдых на паузе ждёт возобновления.
   WorkDayCommandResult pause(DateTime now) {
-    _syncWithClock(now);
+    now = _syncWithClock(now);
 
     final rejection = switch (_visiblePhase) {
       WorkDayPhase.notStarted => RejectionReason.workDayNotStarted,
@@ -308,7 +441,7 @@ final class WorkDayEngine {
   /// Продолжить рабочий день после паузы: счёт идёт с того же места, а
   /// следующий отдых сдвигается на длительность паузы.
   WorkDayCommandResult resume(DateTime now) {
-    _syncWithClock(now);
+    now = _syncWithClock(now);
 
     final rejection = switch (_phase) {
       WorkDayPhase.notStarted => RejectionReason.workDayNotStarted,
@@ -339,7 +472,7 @@ final class WorkDayEngine {
 
   /// Завершить рабочий день вручную. Идущий отдых при этом прерывается.
   WorkDayCommandResult finishWorkDay(DateTime now) {
-    _syncWithClock(now);
+    now = _syncWithClock(now);
 
     final rejection = switch (_phase) {
       WorkDayPhase.notStarted => RejectionReason.workDayNotStarted,
@@ -385,7 +518,7 @@ final class WorkDayEngine {
   /// пересчитывают конец рабочего окна текущего дня, но не прерывают идущий
   /// отдых, не отменяют показанное предложение и не завершают рабочий день.
   WorkDayCommandResult updateSettings(DateTime now, RhythmSettings candidate) {
-    _syncWithClock(now);
+    now = _syncWithClock(now);
 
     final violation = settingsViolation(candidate);
     if (violation != null) {
@@ -448,7 +581,7 @@ final class WorkDayEngine {
 
   /// Текущее состояние на момент [now].
   WorkDaySnapshot snapshot(DateTime now) {
-    _syncWithClock(now);
+    now = _syncWithClock(now);
 
     return WorkDaySnapshot(
       phase: _visiblePhase,
@@ -495,10 +628,99 @@ final class WorkDayEngine {
     return _restDurationFor(kind);
   }
 
-  void _syncWithClock(DateTime now) {
-    _completeRestIfDue(now);
-    _closeAtWorkWindowEndIfDue(now);
-    _offerRestIfDue(now);
+  /// Довести состояние до момента [now] и вернуть момент, который движок
+  /// считает текущим: не раньше последнего увиденного.
+  DateTime _syncWithClock(DateTime now) {
+    final observed = _lastObservedAt;
+    final effective = observed != null && now.isBefore(observed) ? observed : now;
+
+    final closedSince = _closedSince;
+    _closedSince = null;
+    if (closedSince != null) {
+      _catchUpWhileClosed(closedSince, effective);
+    }
+
+    _completeRestIfDue(effective);
+    _closeAtWorkWindowEndIfDue(effective);
+    _offerRestIfDue(effective);
+    _lastObservedAt = effective;
+    return effective;
+  }
+
+  /// Разобрать время, прошедшее при закрытом приложении, по порядку: идущий
+  /// отдых доигрывает до своего конца, каждая прошедшая точка отдыха становится
+  /// пропуском, конец рабочего окна закрывает день.
+  ///
+  /// Пропуски не создают долга: после разбора пользователю достаётся ровно один
+  /// текущий отдых, а не очередь из пропущенных.
+  void _catchUpWhileClosed(DateTime closedSince, DateTime now) {
+    if (!now.isAfter(closedSince)) {
+      return;
+    }
+
+    var missedRests = false;
+    RestKind? repeatingKind;
+    while (true) {
+      final restEndsAt = _restEndsAt;
+      if (_phase == WorkDayPhase.resting &&
+          restEndsAt != null &&
+          !restEndsAt.isAfter(now)) {
+        _endRest(restEndsAt, RestFinishReason.natural);
+        continue;
+      }
+
+      final offerAt = _phase == WorkDayPhase.running && !_restOffered
+          ? _nextRestAtWithinWindow
+          : null;
+      final offerKind = _offerKind;
+      if (offerAt != null && offerKind != null && !offerAt.isAfter(now)) {
+        _skipAt(offerAt, offerKind);
+        missedRests = true;
+        if (offerKind != RestKind.meal) {
+          repeatingKind = offerKind;
+        }
+        continue;
+      }
+
+      final endsAt = _workWindowEndsAt;
+      final windowDue =
+          endsAt != null &&
+          !endsAt.isAfter(now) &&
+          (_phase == WorkDayPhase.running || _phase == WorkDayPhase.paused);
+      if (windowDue) {
+        _closeAtWorkWindowEndIfDue(now);
+        continue;
+      }
+
+      break;
+    }
+
+    if (missedRests) {
+      // Пропущенный обед не переносится: если за закрытие пропущено только его,
+      // текущим отдыхом становится короткий.
+      _offerAfterClosedInterval(now, repeatingKind ?? RestKind.short);
+    }
+  }
+
+  /// Показать единственный текущий отдых после пропусков, накопившихся за время
+  /// закрытия. Очереди нет: предложение одно, и оно сразу на экране.
+  void _offerAfterClosedInterval(DateTime now, RestKind kind) {
+    if (_phase != WorkDayPhase.running || _restOffered) {
+      return;
+    }
+    final endsAt = _workWindowEndsAt;
+    if (endsAt == null || !now.isBefore(endsAt)) {
+      return;
+    }
+    _restOffered = true;
+    _currentRestKind = kind;
+    _events.add(
+      WorkDayEvent.restOffered(
+        now,
+        kind,
+        plannedDuration: _restDurationFor(kind),
+      ),
+    );
   }
 
   /// Отдых заканчивается сам: новый интервал работы начинается с его конца.
@@ -628,7 +850,13 @@ final class WorkDayEngine {
     }
     _restOffered = true;
     _currentRestKind = kind;
-    _events.add(WorkDayEvent.restOffered(next, kind));
+    _events.add(
+      WorkDayEvent.restOffered(
+        next,
+        kind,
+        plannedDuration: _restDurationFor(kind),
+      ),
+    );
   }
 
   /// Запланировать ближайшее предложение отдыха по двум счётчикам и обеду.

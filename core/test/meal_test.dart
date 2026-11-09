@@ -44,7 +44,11 @@ void main() {
       ]);
       expect(
         offered.events.last,
-        WorkDayEvent.restOffered(_at(13), RestKind.meal),
+        WorkDayEvent.restOffered(
+          _at(13),
+          RestKind.meal,
+          plannedDuration: const Duration(minutes: 60),
+        ),
       );
     });
 
@@ -146,7 +150,13 @@ void main() {
         offered.events.where(
           (event) => event.type == WorkDayEventType.restOffered,
         ),
-        [WorkDayEvent.restOffered(_at(13), RestKind.meal)],
+        [
+          WorkDayEvent.restOffered(
+            _at(13),
+            RestKind.meal,
+            plannedDuration: const Duration(minutes: 60),
+          ),
+        ],
       );
 
       engine.startRest(_at(13));
@@ -282,7 +292,11 @@ void main() {
       expect(started.exercises, hasLength(3));
       expect(
         started.events.last,
-        WorkDayEvent.restStarted(_at(10), RestKind.meal),
+        WorkDayEvent.restStarted(
+          _at(10),
+          RestKind.meal,
+          plannedDuration: const Duration(minutes: 60),
+        ),
       );
 
       engine.finishRest(_at(10, 30));
@@ -412,7 +426,11 @@ void main() {
       expect(first.remainingPostponements, 1);
       expect(
         first.events.last,
-        WorkDayEvent.restPostponed(_at(13), RestKind.meal),
+        WorkDayEvent.restPostponed(
+          _at(13),
+          RestKind.meal,
+          plannedDuration: const Duration(minutes: 60),
+        ),
       );
 
       engine.snapshot(_at(13, 5));
@@ -469,7 +487,11 @@ void main() {
         expect(skipped.nextRestAt, _at(13, 30));
         expect(
           skipped.events.last,
-          WorkDayEvent.restSkipped(_at(13, 1), RestKind.meal),
+          WorkDayEvent.restSkipped(
+            _at(13, 1),
+            RestKind.meal,
+            plannedDuration: const Duration(minutes: 60),
+          ),
         );
 
         final longOffered = engine.snapshot(_at(13, 30));
@@ -502,7 +524,11 @@ void main() {
         mealOffered.events
             .where((event) => event.type == WorkDayEventType.restOffered)
             .last,
-        WorkDayEvent.restOffered(_at(9, 30), RestKind.meal),
+        WorkDayEvent.restOffered(
+          _at(9, 30),
+          RestKind.meal,
+          plannedDuration: const Duration(minutes: 60),
+        ),
       );
     });
   });

@@ -37,7 +37,11 @@ void main() {
       expect(offered.nextRestAt, isNull);
       expect(
         offered.events.last,
-        WorkDayEvent.restOffered(_at(10, 30), RestKind.long),
+        WorkDayEvent.restOffered(
+          _at(10, 30),
+          RestKind.long,
+          plannedDuration: const Duration(minutes: 10),
+        ),
       );
     });
 
@@ -55,7 +59,11 @@ void main() {
       expect(started.exercises, hasLength(2));
       expect(
         started.events.last,
-        WorkDayEvent.restStarted(_at(10, 30), RestKind.long),
+        WorkDayEvent.restStarted(
+          _at(10, 30),
+          RestKind.long,
+          plannedDuration: const Duration(minutes: 10),
+        ),
       );
     });
 
@@ -121,8 +129,16 @@ void main() {
             .where((event) => event.type == WorkDayEventType.restOffered)
             .toList(),
         [
-          WorkDayEvent.restOffered(_at(9, 25), RestKind.short),
-          WorkDayEvent.restOffered(_at(9, 50), RestKind.long),
+          WorkDayEvent.restOffered(
+            _at(9, 25),
+            RestKind.short,
+            plannedDuration: const Duration(minutes: 3),
+          ),
+          WorkDayEvent.restOffered(
+            _at(9, 50),
+            RestKind.long,
+            plannedDuration: const Duration(minutes: 10),
+          ),
         ],
       );
     });
@@ -143,7 +159,13 @@ void main() {
         offered.events.where(
           (event) => event.type == WorkDayEventType.restOffered,
         ),
-        [WorkDayEvent.restOffered(_at(9, 20), RestKind.long)],
+        [
+          WorkDayEvent.restOffered(
+            _at(9, 20),
+            RestKind.long,
+            plannedDuration: const Duration(minutes: 10),
+          ),
+        ],
       );
     });
 
@@ -163,7 +185,11 @@ void main() {
       expect(offered.restKind, RestKind.long);
       expect(
         offered.events.last,
-        WorkDayEvent.restOffered(_at(10, 30), RestKind.long),
+        WorkDayEvent.restOffered(
+          _at(10, 30),
+          RestKind.long,
+          plannedDuration: const Duration(minutes: 10),
+        ),
       );
     });
 
@@ -186,7 +212,11 @@ void main() {
       expect(offered.restKind, RestKind.long);
       expect(
         offered.events.last,
-        WorkDayEvent.restOffered(_at(10, 31), RestKind.long),
+        WorkDayEvent.restOffered(
+          _at(10, 31),
+          RestKind.long,
+          plannedDuration: const Duration(minutes: 10),
+        ),
       );
     });
 
@@ -201,7 +231,11 @@ void main() {
       expect(postponed.remainingPostponements, 1);
       expect(
         postponed.events.last,
-        WorkDayEvent.restPostponed(_at(10, 30), RestKind.long),
+        WorkDayEvent.restPostponed(
+          _at(10, 30),
+          RestKind.long,
+          plannedDuration: const Duration(minutes: 10),
+        ),
       );
 
       final offeredAgain = engine.snapshot(_at(10, 35));
@@ -229,7 +263,11 @@ void main() {
       expect(skipped.restKind, isNull);
       expect(
         skipped.events.last,
-        WorkDayEvent.restSkipped(_at(10, 35), RestKind.long),
+        WorkDayEvent.restSkipped(
+          _at(10, 35),
+          RestKind.long,
+          plannedDuration: const Duration(minutes: 10),
+        ),
       );
       expect(engine.snapshot(_at(10, 36)).phase, WorkDayPhase.running);
       expect(engine.snapshot(_at(11, 59)).phase, WorkDayPhase.running);
