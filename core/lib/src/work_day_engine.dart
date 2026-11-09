@@ -13,6 +13,8 @@ final class WorkDayEngine {
     this.window = WorkWindow.standard,
     this.shortRestInterval = const Duration(minutes: 25),
     this.shortRestDuration = const Duration(minutes: 3),
+    this.postponeDuration = const Duration(minutes: 5),
+    this.maxPostponements = 2,
   });
 
   /// Рабочее окно, внутри которого отслеживается ритм.
@@ -24,6 +26,12 @@ final class WorkDayEngine {
   /// Длительность короткого отдыха.
   final Duration shortRestDuration;
 
+  /// На сколько сдвигается предложение отдыха при отложении.
+  final Duration postponeDuration;
+
+  /// Сколько отложений подряд допускается для одного предложения отдыха.
+  final int maxPostponements;
+
   WorkDayPhase _phase = WorkDayPhase.notStarted;
   DateTime? _startedAt;
   DateTime? _finishedAt;
@@ -34,6 +42,7 @@ final class WorkDayEngine {
   bool _restOffered = false;
   DateTime? _restEndsAt;
   DateTime? _workIntervalStartedAt;
+  int _postponesUsed = 0;
   Duration _worked = Duration.zero;
   final List<WorkDayEvent> _events = <WorkDayEvent>[];
 
@@ -61,6 +70,7 @@ final class WorkDayEngine {
     _restEndsAt = null;
     _workIntervalStartedAt = now;
     _pausedAt = null;
+    _postponesUsed = 0;
     _worked = Duration.zero;
     _events.add(WorkDayEvent.started(now));
     return const WorkDayCommandAccepted();
@@ -82,6 +92,7 @@ final class WorkDayEngine {
     _restOffered = false;
     _nextRestAt = null;
     _workIntervalStartedAt = null;
+    _postponesUsed = 0;
     _events.add(WorkDayEvent.restStarted(now, RestKind.short));
     return const WorkDayCommandAccepted();
   }
@@ -99,7 +110,29 @@ final class WorkDayEngine {
     _restOffered = false;
     _nextRestAt = now.add(shortRestInterval);
     _workIntervalStartedAt = now;
+    _postponesUsed = 0;
     _events.add(WorkDayEvent.restSkipped(now, RestKind.short));
+    return const WorkDayCommandAccepted();
+  }
+
+  /// Отложить предложенный отдых: предложение вернётся через
+  /// [postponeDuration], а время работы продолжит идти. Допускается не больше
+  /// [maxPostponements] отложений подряд.
+  WorkDayCommandResult postponeRest(DateTime now) {
+    _syncWithClock(now);
+
+    final rejection = _restCommandRejection;
+    if (rejection != null) {
+      return WorkDayCommandRejected(rejection);
+    }
+    if (_postponesUsed >= maxPostponements) {
+      return const WorkDayCommandRejected(RejectionReason.postponeLimitReached);
+    }
+
+    _postponesUsed++;
+    _restOffered = false;
+    _nextRestAt = now.add(postponeDuration);
+    _events.add(WorkDayEvent.restPostponed(now, RestKind.short));
     return const WorkDayCommandAccepted();
   }
 
@@ -195,6 +228,7 @@ final class WorkDayEngine {
     _restEndsAt = null;
     _workIntervalStartedAt = null;
     _pausedAt = null;
+    _postponesUsed = 0;
     _events.add(WorkDayEvent.finished(now, WorkDayFinishReason.manual));
     return const WorkDayCommandAccepted();
   }
@@ -216,6 +250,7 @@ final class WorkDayEngine {
       nextRestAt: _nextRestAtWithinWindow,
       untilNextRest: _untilNextRest(now),
       remainingRest: _remainingRest(now),
+      remainingPostponements: maxPostponements - _postponesUsed,
       events: _events,
     );
   }
@@ -254,6 +289,7 @@ final class WorkDayEngine {
       _finishedAt = windowEndsAt;
       _nextRestAt = null;
       _workIntervalStartedAt = null;
+      _postponesUsed = 0;
       _events.add(
         WorkDayEvent.finished(
           windowEndsAt,
@@ -268,6 +304,7 @@ final class WorkDayEngine {
     _runningSince = endsAt;
     _nextRestAt = endsAt.add(shortRestInterval);
     _workIntervalStartedAt = endsAt;
+    _postponesUsed = 0;
     _events.add(WorkDayEvent.restFinished(endsAt, RestKind.short));
   }
 
@@ -290,6 +327,7 @@ final class WorkDayEngine {
     _restOffered = false;
     _workIntervalStartedAt = null;
     _pausedAt = null;
+    _postponesUsed = 0;
     _events.add(
       WorkDayEvent.finished(endsAt, WorkDayFinishReason.workWindowEnded),
     );
@@ -355,12 +393,21 @@ final class WorkDayEngine {
         WorkDayCommand.pause,
         WorkDayCommand.finish,
       ],
-      WorkDayPhase.restOffered => const [
-        WorkDayCommand.startRest,
-        WorkDayCommand.skipRest,
-        WorkDayCommand.pause,
-        WorkDayCommand.finish,
-      ],
+      WorkDayPhase.restOffered =>
+        _postponesUsed < maxPostponements
+            ? const [
+                WorkDayCommand.startRest,
+                WorkDayCommand.skipRest,
+                WorkDayCommand.postponeRest,
+                WorkDayCommand.pause,
+                WorkDayCommand.finish,
+              ]
+            : const [
+                WorkDayCommand.startRest,
+                WorkDayCommand.skipRest,
+                WorkDayCommand.pause,
+                WorkDayCommand.finish,
+              ],
       WorkDayPhase.paused => const [
         WorkDayCommand.resume,
         WorkDayCommand.finish,

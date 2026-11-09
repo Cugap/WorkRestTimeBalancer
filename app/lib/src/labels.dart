@@ -44,6 +44,7 @@ String commandLabel(WorkDayCommand command, WorkDayPhase phase) =>
       WorkDayCommand.finish => 'Завершить',
       WorkDayCommand.startRest => 'Начать отдых',
       WorkDayCommand.skipRest => 'Пропустить',
+      WorkDayCommand.postponeRest => 'Отложить на 5 минут',
     };
 
 String rejectionText(RejectionReason reason) => switch (reason) {
@@ -55,4 +56,6 @@ String rejectionText(RejectionReason reason) => switch (reason) {
   RejectionReason.outsideWorkWindow => 'Сейчас вне рабочего окна',
   RejectionReason.restNotOffered => 'Отдых сейчас не предложен',
   RejectionReason.restInProgress => 'Сначала дождитесь конца отдыха',
+  RejectionReason.postponeLimitReached =>
+    'Отдых уже отложен дважды: можно начать или пропустить',
 };
