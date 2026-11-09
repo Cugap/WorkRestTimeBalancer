@@ -51,6 +51,7 @@ void main() {
       expect(snapshot.availableCommands, [
         WorkDayCommand.pause,
         WorkDayCommand.finish,
+        WorkDayCommand.startMeal,
       ]);
       expect(snapshot.worked, const Duration(minutes: 10));
       expect(

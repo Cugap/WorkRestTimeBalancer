@@ -26,6 +26,7 @@ WorkDayCommandResult? _dispatch(
   WorkDayCommand.finishRest => day.finishRest(now),
   WorkDayCommand.skipRest => day.skipRest(now),
   WorkDayCommand.postponeRest => day.postponeRest(now),
+  WorkDayCommand.startMeal => day.startMeal(now),
   null => null,
 };
 
@@ -417,6 +418,54 @@ void main() {
           command: null,
           phase: WorkDayPhase.running,
           worked: const Duration(minutes: 100),
+          restKind: null,
+        ),
+      ],
+    );
+  });
+
+  test('сценарий: день с обедом в 13:00 и досрочным завершением', () {
+    _runRestKindScenario(
+      WorkDayEngine(
+        shortRestInterval: const Duration(hours: 12),
+        longRestInterval: const Duration(hours: 12),
+      ),
+      [
+        (
+          at: Duration.zero,
+          command: WorkDayCommand.start,
+          phase: WorkDayPhase.running,
+          worked: Duration.zero,
+          restKind: null,
+        ),
+        // В 13:00 предлагается обед — отдельный вид отдыха.
+        (
+          at: const Duration(hours: 4),
+          command: null,
+          phase: WorkDayPhase.restOffered,
+          worked: const Duration(hours: 4),
+          restKind: RestKind.meal,
+        ),
+        (
+          at: const Duration(hours: 4),
+          command: WorkDayCommand.startRest,
+          phase: WorkDayPhase.resting,
+          worked: const Duration(hours: 4),
+          restKind: RestKind.meal,
+        ),
+        // Обед завершён досрочно: ритм начинается заново от его конца.
+        (
+          at: const Duration(hours: 4, minutes: 30),
+          command: WorkDayCommand.finishRest,
+          phase: WorkDayPhase.running,
+          worked: const Duration(hours: 4),
+          restKind: null,
+        ),
+        (
+          at: const Duration(hours: 9),
+          command: null,
+          phase: WorkDayPhase.finished,
+          worked: const Duration(hours: 8, minutes: 30),
           restKind: null,
         ),
       ],

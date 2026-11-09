@@ -117,6 +117,49 @@ void main() {
     expect(key('rest-command-finishRest'), findsOneWidget);
   });
 
+  testWidgets('обед предлагается отдельным видом и показывает три упражнения', (
+    tester,
+  ) async {
+    engine = WorkDayEngine(
+      shortRestInterval: const Duration(hours: 12),
+      longRestInterval: const Duration(hours: 12),
+    );
+    await pumpApp(tester);
+    await tap(tester, key('command-start'));
+
+    clock.advance(const Duration(hours: 4));
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(key('rest-kind'), findsOneWidget);
+    final offered = engine.snapshot(clock.now());
+    expect(offered.phase, WorkDayPhase.restOffered);
+    expect(offered.restKind, RestKind.meal);
+    expect(offered.restDuration, const Duration(minutes: 60));
+
+    await openRestScreen(tester);
+
+    expect(key('rest-screen-kind'), findsOneWidget);
+    expect(key('rest-screen-duration'), findsOneWidget);
+    expect(key('rest-screen-countdown'), findsNothing);
+
+    await tap(tester, key('rest-command-startRest'));
+
+    final resting = engine.snapshot(clock.now());
+    expect(resting.phase, WorkDayPhase.resting);
+    expect(resting.restKind, RestKind.meal);
+    expect(
+      resting.exercises.map((exercise) => exercise.category).toSet(),
+      ExerciseCategory.values.toSet(),
+    );
+
+    expect(key('rest-screen-countdown'), findsOneWidget);
+    for (final exercise in resting.exercises) {
+      expect(find.byKey(ValueKey('exercise-${exercise.id}')), findsOneWidget);
+    }
+    expect(find.byKey(const ValueKey('exercise-name-2')), findsOneWidget);
+    expect(key('rest-command-finishRest'), findsOneWidget);
+  });
+
   testWidgets('«Закончить сейчас» досрочно завершает отдых и возвращает к работе', (
     tester,
   ) async {

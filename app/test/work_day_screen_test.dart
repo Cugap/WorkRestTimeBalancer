@@ -127,6 +127,44 @@ void main() {
     expect(command(WorkDayCommand.skipRest), findsNothing);
   });
 
+  testWidgets('ручной старт обеда доступен из главного экрана', (tester) async {
+    await pumpApp(tester);
+    await tapCommand(tester, WorkDayCommand.start);
+
+    expect(command(WorkDayCommand.startMeal), findsOneWidget);
+
+    await tester.ensureVisible(command(WorkDayCommand.startMeal));
+    await tester.tap(command(WorkDayCommand.startMeal));
+    await tester.pump();
+
+    final snapshot = engine.snapshot(clock.now());
+    expect(snapshot.phase, WorkDayPhase.resting);
+    expect(snapshot.restKind, RestKind.meal);
+    expect(snapshot.exercises, hasLength(3));
+    expect(phase(WorkDayPhase.resting), findsOneWidget);
+    expect(find.byKey(const ValueKey('rest-kind')), findsOneWidget);
+    expect(command(WorkDayCommand.startMeal), findsNothing);
+    expect(find.byKey(const ValueKey('open-rest-screen')), findsOneWidget);
+  });
+
+  testWidgets('после состоявшегося обеда ручной старт больше не предлагается', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await tapCommand(tester, WorkDayCommand.start);
+    await tester.ensureVisible(command(WorkDayCommand.startMeal));
+    await tester.tap(command(WorkDayCommand.startMeal));
+    await tester.pump();
+
+    clock.advance(const Duration(minutes: 60));
+    await tester.pump(const Duration(seconds: 1));
+
+    final snapshot = engine.snapshot(clock.now());
+    expect(snapshot.phase, WorkDayPhase.running);
+    expect(snapshot.restKind, isNull);
+    expect(command(WorkDayCommand.startMeal), findsNothing);
+  });
+
   testWidgets('отложить отдых можно дважды, после этого кнопки нет', (
     tester,
   ) async {

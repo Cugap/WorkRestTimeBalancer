@@ -1,3 +1,4 @@
+import 'clock_time.dart';
 import 'exercise.dart';
 import 'exercise_catalog.dart';
 import 'rest_kind.dart';
@@ -19,6 +20,8 @@ final class WorkDayEngine {
     this.longRestDuration = const Duration(minutes: 10),
     this.postponeDuration = const Duration(minutes: 5),
     this.maxPostponements = 2,
+    this.mealStart = const ClockTime(13, 0),
+    this.mealDuration = const Duration(minutes: 60),
     this.catalog = exerciseCatalog,
   });
 
@@ -43,6 +46,12 @@ final class WorkDayEngine {
   /// Сколько отложений подряд допускается для одного предложения отдыха.
   final int maxPostponements;
 
+  /// Время суток, когда предлагается обед.
+  final ClockTime mealStart;
+
+  /// Плановая длительность обеда.
+  final Duration mealDuration;
+
   /// Набор упражнений, из которого ядро выбирает их по кругу.
   final List<Exercise> catalog;
 
@@ -59,7 +68,13 @@ final class WorkDayEngine {
   /// Момент следующего длинного отдыха по счётчику ритма.
   DateTime? _nextLongRestAt;
 
-  /// Момент ближайшего предложения отдыха: минимум из двух счётчиков или
+  /// Момент предложения обеда в текущем рабочем дне с учётом отложений.
+  DateTime? _nextMealAt;
+
+  /// Обед в этом рабочем дне уже состоялся (начат или пропущен).
+  bool _mealTaken = false;
+
+  /// Момент ближайшего предложения отдыха: минимум из счётчиков и обеда или
   /// отложенный момент.
   DateTime? _nextRestAt;
 
@@ -102,6 +117,8 @@ final class WorkDayEngine {
     _workWindowEndsAt = window.endOn(now);
     _nextShortRestAt = now.add(shortRestInterval);
     _nextLongRestAt = now.add(longRestInterval);
+    _mealTaken = false;
+    _nextMealAt = _initialMealAt(now);
     _scheduleNextOffer();
     _restOffered = false;
     _currentRestKind = null;
@@ -127,10 +144,41 @@ final class WorkDayEngine {
       return WorkDayCommandRejected(rejection);
     }
 
+    _beginRest(now, _currentRestKind!);
+    return const WorkDayCommandAccepted();
+  }
+
+  /// Начать обед вручную в любой момент идущего рабочего дня, даже раньше
+  /// назначенного времени. Ручной обед считается состоявшимся: повторно в
+  /// этом рабочем дне он не предлагается и не начинается.
+  WorkDayCommandResult startMeal(DateTime now) {
+    _syncWithClock(now);
+
+    final rejection = switch (_phase) {
+      WorkDayPhase.notStarted => RejectionReason.workDayNotStarted,
+      WorkDayPhase.finished => RejectionReason.workDayAlreadyFinished,
+      WorkDayPhase.paused => RejectionReason.workDayAlreadyPaused,
+      WorkDayPhase.resting => RejectionReason.restInProgress,
+      WorkDayPhase.running || WorkDayPhase.restOffered => null,
+    };
+    if (rejection != null) {
+      return WorkDayCommandRejected(rejection);
+    }
+    if (_mealTaken) {
+      return const WorkDayCommandRejected(RejectionReason.mealAlreadyTaken);
+    }
+
+    _beginRest(now, RestKind.meal);
+    return const WorkDayCommandAccepted();
+  }
+
+  /// Начать отдых [kind] с момента [now]: работа замирает, идёт таймер, а
+  /// упражнения выбираются один раз на весь отдых.
+  void _beginRest(DateTime now, RestKind kind) {
     _worked += now.difference(_runningSince!);
     _runningSince = null;
-    final kind = _currentRestKind!;
     _phase = WorkDayPhase.resting;
+    _currentRestKind = kind;
     _restEndsAt = now.add(_restDurationFor(kind));
     _restStartedAt = now;
     _restExercises = _takeExercises(_exerciseCountFor(kind));
@@ -139,8 +187,11 @@ final class WorkDayEngine {
     _offerKind = null;
     _workIntervalStartedAt = null;
     _postponesUsed = 0;
+    if (kind == RestKind.meal) {
+      _mealTaken = true;
+      _nextMealAt = null;
+    }
     _events.add(WorkDayEvent.restStarted(now, kind));
-    return const WorkDayCommandAccepted();
   }
 
   /// Завершить идущий отдых досрочно: новый интервал работы начинается с этого
@@ -176,12 +227,26 @@ final class WorkDayEngine {
     _restOffered = false;
     _currentRestKind = null;
     _nextShortRestAt = now.add(shortRestInterval);
+    if (kind == RestKind.meal) {
+      // Пропуск обеда ничего не переносит: следующий обед будет только в
+      // новом рабочем дне, а длинный счётчик не сбрасывается. Новый интервал
+      // работы начинается с момента пропуска, как у любого пропуска.
+      _mealTaken = true;
+      _nextMealAt = null;
+    }
     if (kind == RestKind.long) {
       final planned = _nextLongRestAt ?? now;
       final nextLong = planned.add(longRestInterval);
       _nextLongRestAt = nextLong.isAfter(now)
           ? nextLong
           : now.add(longRestInterval);
+    } else {
+      // Обед с приоритетом мог вытеснить длинный отдых, точка которого уже
+      // прошла: сдвигаем её так, чтобы пропуск не создавал долга.
+      final longAt = _nextLongRestAt;
+      if (longAt != null && !longAt.isAfter(now)) {
+        _nextLongRestAt = now.add(longRestInterval);
+      }
     }
     _scheduleNextOffer();
     _workIntervalStartedAt = now;
@@ -206,9 +271,13 @@ final class WorkDayEngine {
 
     _postponesUsed++;
     _restOffered = false;
+    final kind = _currentRestKind!;
     _currentRestKind = null;
     _nextRestAt = now.add(postponeDuration);
-    _events.add(WorkDayEvent.restPostponed(now, _offerKind!));
+    if (kind == RestKind.meal) {
+      _nextMealAt = _nextRestAt;
+    }
+    _events.add(WorkDayEvent.restPostponed(now, kind));
     return const WorkDayCommandAccepted();
   }
 
@@ -267,7 +336,9 @@ final class WorkDayEngine {
     final pausedFor = now.difference(_pausedAt!);
     _nextShortRestAt = _nextShortRestAt?.add(pausedFor);
     _nextLongRestAt = _nextLongRestAt?.add(pausedFor);
-    if (!_restOffered) {
+    if (!_restOffered && _offerKind != RestKind.meal) {
+      // Момент обеда — настенное время: пауза его не сдвигает. Обед,
+      // наступивший на паузе, ждёт возобновления и предлагается сразу.
       _nextRestAt = _nextRestAt?.add(pausedFor);
     }
     _pausedAt = null;
@@ -386,13 +457,19 @@ final class WorkDayEngine {
     _clearRest();
     _lastRestFinished = restFinished;
 
-    if (kind == RestKind.long) {
-      _nextLongRestAt = endedAt.add(longRestInterval);
-    } else {
-      // Отдых — не рабочее время: счётчик длинного отдыха сдвигается на него.
-      _nextLongRestAt = _nextLongRestAt?.add(actualDuration);
+    switch (kind) {
+      case RestKind.meal:
+        // Обед сбрасывает оба счётчика: ритм начинается заново от его конца.
+        _nextShortRestAt = endedAt.add(shortRestInterval);
+        _nextLongRestAt = endedAt.add(longRestInterval);
+      case RestKind.long:
+        _nextLongRestAt = endedAt.add(longRestInterval);
+        _nextShortRestAt = endedAt.add(shortRestInterval);
+      case RestKind.short:
+        // Отдых — не рабочее время: счётчик длинного отдыха сдвигается на него.
+        _nextLongRestAt = _nextLongRestAt?.add(actualDuration);
+        _nextShortRestAt = endedAt.add(shortRestInterval);
     }
-    _nextShortRestAt = endedAt.add(shortRestInterval);
 
     final windowEndsAt = _workWindowEndsAt;
     if (windowEndsAt != null && !endedAt.isBefore(windowEndsAt)) {
@@ -442,6 +519,7 @@ final class WorkDayEngine {
   void _clearSchedule() {
     _nextShortRestAt = null;
     _nextLongRestAt = null;
+    _nextMealAt = null;
     _nextRestAt = null;
     _offerKind = null;
     _restOffered = false;
@@ -487,19 +565,58 @@ final class WorkDayEngine {
     _events.add(WorkDayEvent.restOffered(next, kind));
   }
 
-  /// Запланировать ближайшее предложение отдыха по двум счётчикам.
+  /// Запланировать ближайшее предложение отдыха по двум счётчикам и обеду.
+  /// При совпадении моментов обед важнее повторяющегося отдыха, а длинный
+  /// отдых — важнее короткого: обед не теряется, а отдыхи не идут очередью.
   void _scheduleNextOffer() {
-    final shortAt = _nextShortRestAt;
-    final longAt = _nextLongRestAt;
-    if (shortAt == null && longAt == null) {
+    final mealAt = _mealCandidateAt;
+    final candidates = <(DateTime, RestKind)>[
+      if (_nextShortRestAt != null) (_nextShortRestAt!, RestKind.short),
+      if (_nextLongRestAt != null) (_nextLongRestAt!, RestKind.long),
+      if (mealAt != null) (mealAt, RestKind.meal),
+    ];
+    if (candidates.isEmpty) {
       _nextRestAt = null;
       _offerKind = null;
       return;
     }
-    final longWins =
-        longAt != null && (shortAt == null || !longAt.isAfter(shortAt));
-    _nextRestAt = longWins ? longAt : shortAt;
-    _offerKind = longWins ? RestKind.long : RestKind.short;
+    candidates.sort((a, b) {
+      final byMoment = a.$1.compareTo(b.$1);
+      return byMoment != 0
+          ? byMoment
+          : _offerPriority(a.$2).compareTo(_offerPriority(b.$2));
+    });
+    _nextRestAt = candidates.first.$1;
+    _offerKind = candidates.first.$2;
+  }
+
+  /// Порядок выбора при совпадении моментов: обед, длинный, короткий.
+  int _offerPriority(RestKind kind) => switch (kind) {
+    RestKind.meal => 0,
+    RestKind.long => 1,
+    RestKind.short => 2,
+  };
+
+  /// Момент обеда, если он ещё не состоялся в этом рабочем дне. Попадание за
+  /// конец окна отсекает [_nextRestAtWithinWindow].
+  DateTime? get _mealCandidateAt => _mealTaken ? null : _nextMealAt;
+
+  /// Момент обеда в начале рабочего дня. Обед предлагается только в своё
+  /// время: если к старту дня оно уже прошло, автоматического предложения не
+  /// будет — начать обед можно вручную. Обед ровно на конце рабочего окна или
+  /// позже не предлагается.
+  DateTime? _initialMealAt(DateTime now) {
+    final scheduled = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      mealStart.hour,
+      mealStart.minute,
+    );
+    if (scheduled.isBefore(now) || !scheduled.isBefore(window.endOn(now))) {
+      return null;
+    }
+    return scheduled;
   }
 
   /// Момент следующего отдыха, только если он ещё может наступить внутри
@@ -546,25 +663,19 @@ final class WorkDayEngine {
     return switch (_visiblePhase) {
       WorkDayPhase.notStarted =>
         window.contains(now) ? const [WorkDayCommand.start] : const [],
-      WorkDayPhase.running => const [
+      WorkDayPhase.running => [
         WorkDayCommand.pause,
         WorkDayCommand.finish,
+        if (_canStartMealManually) WorkDayCommand.startMeal,
       ],
-      WorkDayPhase.restOffered =>
-        _postponesUsed < maxPostponements
-            ? const [
-                WorkDayCommand.startRest,
-                WorkDayCommand.skipRest,
-                WorkDayCommand.postponeRest,
-                WorkDayCommand.pause,
-                WorkDayCommand.finish,
-              ]
-            : const [
-                WorkDayCommand.startRest,
-                WorkDayCommand.skipRest,
-                WorkDayCommand.pause,
-                WorkDayCommand.finish,
-              ],
+      WorkDayPhase.restOffered => [
+        WorkDayCommand.startRest,
+        WorkDayCommand.skipRest,
+        if (_postponesUsed < maxPostponements) WorkDayCommand.postponeRest,
+        WorkDayCommand.pause,
+        WorkDayCommand.finish,
+        if (_canStartMealManually) WorkDayCommand.startMeal,
+      ],
       WorkDayPhase.paused => const [
         WorkDayCommand.resume,
         WorkDayCommand.finish,
@@ -578,6 +689,11 @@ final class WorkDayEngine {
     };
   }
 
+  /// Обед ещё можно начать вручную: он не состоялся и сейчас не предложен сам
+  /// (предложенный обед начинается командой «начать отдых»).
+  bool get _canStartMealManually =>
+      !_mealTaken && _currentRestKind != RestKind.meal;
+
   Duration _workedAt(DateTime now) {
     final since = _runningSince;
     if (_phase == WorkDayPhase.running && since != null) {
@@ -587,16 +703,18 @@ final class WorkDayEngine {
   }
 
   /// Сколько упражнений показывает отдых: короткий — одно, длинный — два из
-  /// разных категорий.
+  /// разных категорий, обед — три, по одному из каждой категории.
   int _exerciseCountFor(RestKind kind) => switch (kind) {
     RestKind.short => 1,
     RestKind.long => 2,
+    RestKind.meal => 3,
   };
 
   /// Плановая длительность отдыха по его виду.
   Duration _restDurationFor(RestKind kind) => switch (kind) {
     RestKind.short => shortRestDuration,
     RestKind.long => longRestDuration,
+    RestKind.meal => mealDuration,
   };
 
   /// Взять [count] упражнений по кругу, не повторяя уже взятые в этом отдыхе и

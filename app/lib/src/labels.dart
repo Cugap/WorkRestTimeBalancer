@@ -35,22 +35,28 @@ String phaseTitle(WorkDayPhase phase) => switch (phase) {
   WorkDayPhase.finished => 'Рабочий день завершён',
 };
 
-String commandLabel(WorkDayCommand command, WorkDayPhase phase) =>
-    switch (command) {
-      WorkDayCommand.start =>
-        phase == WorkDayPhase.finished ? 'Начать новый рабочий день' : 'Начать',
-      WorkDayCommand.pause => 'Пауза',
-      WorkDayCommand.resume => 'Продолжить',
-      WorkDayCommand.finish => 'Завершить',
-      WorkDayCommand.startRest => 'Начать отдых',
-      WorkDayCommand.finishRest => 'Закончить сейчас',
-      WorkDayCommand.skipRest => 'Пропустить',
-      WorkDayCommand.postponeRest => 'Отложить на 5 минут',
-    };
+String commandLabel(
+  WorkDayCommand command,
+  WorkDayPhase phase, {
+  RestKind? restKind,
+}) => switch (command) {
+  WorkDayCommand.start =>
+    phase == WorkDayPhase.finished ? 'Начать новый рабочий день' : 'Начать',
+  WorkDayCommand.pause => 'Пауза',
+  WorkDayCommand.resume => 'Продолжить',
+  WorkDayCommand.finish => 'Завершить',
+  WorkDayCommand.startRest =>
+    restKind == RestKind.meal ? 'Начать обед' : 'Начать отдых',
+  WorkDayCommand.finishRest => 'Закончить сейчас',
+  WorkDayCommand.skipRest => 'Пропустить',
+  WorkDayCommand.postponeRest => 'Отложить на 5 минут',
+  WorkDayCommand.startMeal => 'Начать обед',
+};
 
 String restKindLabel(RestKind kind) => switch (kind) {
   RestKind.short => 'Короткий отдых',
   RestKind.long => 'Длинный отдых',
+  RestKind.meal => 'Обед',
 };
 
 String exerciseCategoryLabel(ExerciseCategory category) => switch (category) {
@@ -82,4 +88,5 @@ String rejectionText(RejectionReason reason) => switch (reason) {
   RejectionReason.postponeLimitReached =>
     'Отдых уже отложен дважды: можно начать или пропустить',
   RejectionReason.restNotInProgress => 'Отдых сейчас не идёт',
+  RejectionReason.mealAlreadyTaken => 'Обед на сегодня уже состоялся',
 };
