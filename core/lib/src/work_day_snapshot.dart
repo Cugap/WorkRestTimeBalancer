@@ -9,6 +9,7 @@ final class WorkDaySnapshot {
     required List<WorkDayCommand> availableCommands,
     required this.worked,
     required this.remainingInWorkWindow,
+    required this.remainingPostponements,
     required List<WorkDayEvent> events,
     this.startedAt,
     this.finishedAt,
@@ -61,6 +62,11 @@ final class WorkDaySnapshot {
   /// Сколько осталось от идущего отдыха; null, если отдых не идёт.
   /// Никогда не отрицательно.
   final Duration? remainingRest;
+
+  /// Сколько отложений ещё доступно для текущего предложения отдыха. Лимит
+  /// один на цепочку предложений: сбрасывается, когда отдых начался,
+  /// пропущен или завершён. Вне предложения равен полному лимиту.
+  final int remainingPostponements;
 
   /// Журнал событий рабочего дня.
   final List<WorkDayEvent> events;

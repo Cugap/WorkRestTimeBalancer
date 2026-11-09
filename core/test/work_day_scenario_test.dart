@@ -13,6 +13,21 @@ typedef Step = ({
 
 DateTime _day(Duration offset) => DateTime(2026, 3, 4, 9).add(offset);
 
+WorkDayCommandResult? _dispatch(
+  WorkDayEngine day,
+  WorkDayCommand? command,
+  DateTime now,
+) => switch (command) {
+  WorkDayCommand.start => day.startWorkDay(now),
+  WorkDayCommand.pause => day.pause(now),
+  WorkDayCommand.resume => day.resume(now),
+  WorkDayCommand.finish => day.finishWorkDay(now),
+  WorkDayCommand.startRest => day.startRest(now),
+  WorkDayCommand.skipRest => day.skipRest(now),
+  WorkDayCommand.postponeRest => day.postponeRest(now),
+  null => null,
+};
+
 /// Проигрывает сценарий через публичный интерфейс ядра.
 ///
 /// Интервал отдыха по умолчанию длиннее рабочего окна: сценарии про механику
@@ -23,15 +38,7 @@ void _runScenario(List<Step> steps, {WorkDayEngine? engine}) {
 
   for (final step in steps) {
     final now = _day(step.at);
-    final result = switch (step.command) {
-      WorkDayCommand.start => day.startWorkDay(now),
-      WorkDayCommand.pause => day.pause(now),
-      WorkDayCommand.resume => day.resume(now),
-      WorkDayCommand.finish => day.finishWorkDay(now),
-      WorkDayCommand.startRest => day.startRest(now),
-      WorkDayCommand.skipRest => day.skipRest(now),
-      null => null,
-    };
+    final result = _dispatch(day, step.command, now);
 
     if (step.command == null) {
       expect(
@@ -56,6 +63,62 @@ void _runScenario(List<Step> steps, {WorkDayEngine? engine}) {
     final snapshot = day.snapshot(now);
     expect(snapshot.phase, step.phase, reason: 'фаза на ${step.at}');
     expect(snapshot.worked, step.worked, reason: 'работа на ${step.at}');
+  }
+}
+
+/// Шаг сценария отложений: к обычным ожиданиям добавляет остаток отложений и
+/// момент возобновления предложения.
+typedef PostponeStep = ({
+  Duration at,
+  WorkDayCommand? command,
+  WorkDayPhase phase,
+  Duration worked,
+  RejectionReason? rejection,
+  int remainingPostponements,
+  DateTime? nextRestAt,
+});
+
+/// Проигрывает сценарий отложений на движке с настройками ритма по умолчанию.
+void _runPostponeScenario(List<PostponeStep> steps) {
+  final day = WorkDayEngine();
+
+  for (final step in steps) {
+    final now = _day(step.at);
+    final result = _dispatch(day, step.command, now);
+
+    if (step.command == null) {
+      expect(
+        step.rejection,
+        isNull,
+        reason: 'шаг без команды не может ждать отказа',
+      );
+    } else if (step.rejection == null) {
+      expect(
+        result,
+        isA<WorkDayCommandAccepted>(),
+        reason: 'команда на ${step.at}',
+      );
+    } else {
+      expect(
+        (result! as WorkDayCommandRejected).reason,
+        step.rejection,
+        reason: 'команда на ${step.at}',
+      );
+    }
+
+    final snapshot = day.snapshot(now);
+    expect(snapshot.phase, step.phase, reason: 'фаза на ${step.at}');
+    expect(snapshot.worked, step.worked, reason: 'работа на ${step.at}');
+    expect(
+      snapshot.remainingPostponements,
+      step.remainingPostponements,
+      reason: 'остаток отложений на ${step.at}',
+    );
+    expect(
+      snapshot.nextRestAt,
+      step.nextRestAt,
+      reason: 'следующий отдых на ${step.at}',
+    );
   }
 }
 
@@ -227,5 +290,118 @@ void main() {
         rejection: null,
       ),
     ], engine: WorkDayEngine());
+  });
+
+  test('сценарий: два отложения подряд, отказ третьему и сброс счётчика', () {
+    _runPostponeScenario([
+      (
+        at: Duration.zero,
+        command: WorkDayCommand.start,
+        phase: WorkDayPhase.running,
+        worked: Duration.zero,
+        rejection: null,
+        remainingPostponements: 2,
+        nextRestAt: _day(const Duration(minutes: 25)),
+      ),
+      (
+        at: const Duration(minutes: 25),
+        command: null,
+        phase: WorkDayPhase.restOffered,
+        worked: const Duration(minutes: 25),
+        rejection: null,
+        remainingPostponements: 2,
+        nextRestAt: null,
+      ),
+      (
+        at: const Duration(minutes: 25),
+        command: WorkDayCommand.postponeRest,
+        phase: WorkDayPhase.running,
+        worked: const Duration(minutes: 25),
+        rejection: null,
+        remainingPostponements: 1,
+        nextRestAt: _day(const Duration(minutes: 30)),
+      ),
+      (
+        at: const Duration(minutes: 30),
+        command: null,
+        phase: WorkDayPhase.restOffered,
+        worked: const Duration(minutes: 30),
+        rejection: null,
+        remainingPostponements: 1,
+        nextRestAt: null,
+      ),
+      (
+        at: const Duration(minutes: 30),
+        command: WorkDayCommand.postponeRest,
+        phase: WorkDayPhase.running,
+        worked: const Duration(minutes: 30),
+        rejection: null,
+        remainingPostponements: 0,
+        nextRestAt: _day(const Duration(minutes: 35)),
+      ),
+      (
+        at: const Duration(minutes: 35),
+        command: null,
+        phase: WorkDayPhase.restOffered,
+        worked: const Duration(minutes: 35),
+        rejection: null,
+        remainingPostponements: 0,
+        nextRestAt: null,
+      ),
+      (
+        at: const Duration(minutes: 36),
+        command: WorkDayCommand.postponeRest,
+        phase: WorkDayPhase.restOffered,
+        worked: const Duration(minutes: 36),
+        rejection: RejectionReason.postponeLimitReached,
+        remainingPostponements: 0,
+        nextRestAt: null,
+      ),
+      (
+        at: const Duration(minutes: 36),
+        command: WorkDayCommand.skipRest,
+        phase: WorkDayPhase.running,
+        worked: const Duration(minutes: 36),
+        rejection: null,
+        remainingPostponements: 2,
+        nextRestAt: _day(const Duration(minutes: 61)),
+      ),
+      (
+        at: const Duration(minutes: 61),
+        command: null,
+        phase: WorkDayPhase.restOffered,
+        worked: const Duration(minutes: 61),
+        rejection: null,
+        remainingPostponements: 2,
+        nextRestAt: null,
+      ),
+      (
+        at: const Duration(minutes: 61),
+        command: WorkDayCommand.startRest,
+        phase: WorkDayPhase.resting,
+        worked: const Duration(minutes: 61),
+        rejection: null,
+        remainingPostponements: 2,
+        nextRestAt: null,
+      ),
+      (
+        at: const Duration(minutes: 64),
+        command: null,
+        phase: WorkDayPhase.running,
+        worked: const Duration(minutes: 61),
+        rejection: null,
+        remainingPostponements: 2,
+        nextRestAt: _day(const Duration(minutes: 89)),
+      ),
+      (
+        at: const Duration(minutes: 89),
+        command: null,
+        phase: WorkDayPhase.restOffered,
+        worked: const Duration(minutes: 86),
+        rejection: null,
+        remainingPostponements: 2,
+        nextRestAt: null,
+      ),
+    ]);
   });
 }

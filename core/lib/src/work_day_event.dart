@@ -9,6 +9,7 @@ enum WorkDayEventType {
   restOffered,
   restStarted,
   restSkipped,
+  restPostponed,
   restFinished,
 }
 
@@ -45,6 +46,10 @@ final class WorkDayEvent {
 
   const WorkDayEvent.restSkipped(this.at, RestKind this.restKind)
     : type = WorkDayEventType.restSkipped,
+      finishReason = null;
+
+  const WorkDayEvent.restPostponed(this.at, RestKind this.restKind)
+    : type = WorkDayEventType.restPostponed,
       finishReason = null;
 
   const WorkDayEvent.restFinished(this.at, RestKind this.restKind)

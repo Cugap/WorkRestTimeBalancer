@@ -20,7 +20,15 @@ enum WorkDayPhase {
 }
 
 /// Действия, доступные в текущей фазе.
-enum WorkDayCommand { start, pause, resume, finish, startRest, skipRest }
+enum WorkDayCommand {
+  start,
+  pause,
+  resume,
+  finish,
+  startRest,
+  skipRest,
+  postponeRest,
+}
 
 /// Почему команда отклонена. Состояние при отказе не меняется.
 enum RejectionReason {
@@ -36,6 +44,10 @@ enum RejectionReason {
 
   /// Отдых уже идёт, поэтому команда работы с ритмом недоступна.
   restInProgress,
+
+  /// Отложений в этой цепочке предложений больше нет: отдых можно только
+  /// начать или пропустить.
+  postponeLimitReached,
 }
 
 /// Результат команды рабочего дня.

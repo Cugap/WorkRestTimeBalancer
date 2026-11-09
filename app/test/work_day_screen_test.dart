@@ -137,4 +137,37 @@ void main() {
     expect(find.byKey(const ValueKey('next-rest-countdown')), findsOneWidget);
     expect(command(WorkDayCommand.skipRest), findsNothing);
   });
+
+  testWidgets('отложить отдых можно дважды, после этого кнопки нет', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await tapCommand(tester, WorkDayCommand.start);
+
+    clock.advance(const Duration(minutes: 25));
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(phase(WorkDayPhase.restOffered), findsOneWidget);
+    expect(command(WorkDayCommand.postponeRest), findsOneWidget);
+    expect(find.byKey(const ValueKey('postponements-left')), findsOneWidget);
+
+    await tapCommand(tester, WorkDayCommand.postponeRest);
+
+    expect(phase(WorkDayPhase.running), findsOneWidget);
+    expect(command(WorkDayCommand.postponeRest), findsNothing);
+    expect(find.byKey(const ValueKey('next-rest-countdown')), findsOneWidget);
+
+    clock.advance(const Duration(minutes: 5));
+    await tester.pump(const Duration(seconds: 1));
+    expect(phase(WorkDayPhase.restOffered), findsOneWidget);
+    await tapCommand(tester, WorkDayCommand.postponeRest);
+
+    clock.advance(const Duration(minutes: 5));
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(phase(WorkDayPhase.restOffered), findsOneWidget);
+    expect(command(WorkDayCommand.postponeRest), findsNothing);
+    expect(command(WorkDayCommand.startRest), findsOneWidget);
+    expect(command(WorkDayCommand.skipRest), findsOneWidget);
+  });
 }

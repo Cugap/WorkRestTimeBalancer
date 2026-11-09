@@ -49,6 +49,7 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
       WorkDayCommand.finish => widget.engine.finishWorkDay(now),
       WorkDayCommand.startRest => widget.engine.startRest(now),
       WorkDayCommand.skipRest => widget.engine.skipRest(now),
+      WorkDayCommand.postponeRest => widget.engine.postponeRest(now),
     };
 
     setState(() {
@@ -95,6 +96,17 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
                   'До следующего отдыха: '
                   '${formatClock(snapshot.untilNextRest!)}',
                   key: const ValueKey('next-rest-countdown'),
+                  style: theme.textTheme.bodyLarge,
+                ),
+                const SizedBox(height: 8),
+              ],
+              if (snapshot.phase == WorkDayPhase.restOffered) ...[
+                Text(
+                  snapshot.remainingPostponements == 0
+                      ? 'Отложить отдых больше нельзя'
+                      : 'Можно отложить ещё: '
+                            '${snapshot.remainingPostponements}',
+                  key: const ValueKey('postponements-left'),
                   style: theme.textTheme.bodyLarge,
                 ),
                 const SizedBox(height: 8),

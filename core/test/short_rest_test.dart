@@ -29,6 +29,7 @@ void main() {
       expect(offered.availableCommands, [
         WorkDayCommand.startRest,
         WorkDayCommand.skipRest,
+        WorkDayCommand.postponeRest,
         WorkDayCommand.pause,
         WorkDayCommand.finish,
       ]);
@@ -275,6 +276,7 @@ void main() {
       expect(resumed.availableCommands, [
         WorkDayCommand.startRest,
         WorkDayCommand.skipRest,
+        WorkDayCommand.postponeRest,
         WorkDayCommand.pause,
         WorkDayCommand.finish,
       ]);
