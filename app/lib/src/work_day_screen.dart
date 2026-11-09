@@ -95,6 +95,15 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
                 style: theme.textTheme.headlineMedium,
                 textAlign: TextAlign.center,
               ),
+              if (snapshot.restKind != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  restKindLabel(snapshot.restKind!),
+                  key: const ValueKey('rest-kind'),
+                  style: theme.textTheme.titleMedium,
+                  textAlign: TextAlign.center,
+                ),
+              ],
               const SizedBox(height: 24),
               if (snapshot.remainingRest != null) ...[
                 Text(

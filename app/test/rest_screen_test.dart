@@ -79,6 +79,44 @@ void main() {
     expect(key('rest-command-finishRest'), findsOneWidget);
   });
 
+  testWidgets('длинный отдых показывает вид, длительность и два упражнения', (
+    tester,
+  ) async {
+    engine = WorkDayEngine(
+      shortRestInterval: const Duration(hours: 12),
+      longRestInterval: const Duration(minutes: 25),
+    );
+    await pumpApp(tester);
+    await offerRest(tester);
+
+    expect(key('rest-kind'), findsOneWidget);
+    expect(find.text('Длинный отдых'), findsOneWidget);
+
+    await openRestScreen(tester);
+
+    expect(key('rest-screen-kind'), findsOneWidget);
+    expect(key('rest-screen-duration'), findsOneWidget);
+    expect(key('rest-screen-countdown'), findsNothing);
+
+    await tap(tester, key('rest-command-startRest'));
+
+    final snapshot = engine.snapshot(clock.now());
+    expect(snapshot.phase, WorkDayPhase.resting);
+    expect(snapshot.restKind, RestKind.long);
+    expect(snapshot.exercises, hasLength(2));
+    expect(
+      snapshot.exercises.first.category,
+      isNot(snapshot.exercises.last.category),
+    );
+    for (final exercise in snapshot.exercises) {
+      expect(find.byKey(ValueKey('exercise-${exercise.id}')), findsOneWidget);
+    }
+    expect(key('exercise-name-1'), findsOneWidget);
+
+    await tester.scrollUntilVisible(key('rest-command-finishRest'), 300);
+    expect(key('rest-command-finishRest'), findsOneWidget);
+  });
+
   testWidgets('«Закончить сейчас» досрочно завершает отдых и возвращает к работе', (
     tester,
   ) async {

@@ -10,6 +10,7 @@ WorkDayEngine _engine() => WorkDayEngine(
   ),
   shortRestInterval: const Duration(minutes: 1),
   shortRestDuration: const Duration(seconds: 20),
+  longRestInterval: const Duration(hours: 12),
 );
 
 void main() {

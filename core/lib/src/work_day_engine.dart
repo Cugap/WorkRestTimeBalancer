@@ -15,6 +15,8 @@ final class WorkDayEngine {
     this.window = WorkWindow.standard,
     this.shortRestInterval = const Duration(minutes: 25),
     this.shortRestDuration = const Duration(minutes: 3),
+    this.longRestInterval = const Duration(minutes: 90),
+    this.longRestDuration = const Duration(minutes: 10),
     this.postponeDuration = const Duration(minutes: 5),
     this.maxPostponements = 2,
     this.catalog = exerciseCatalog,
@@ -28,6 +30,12 @@ final class WorkDayEngine {
 
   /// Длительность короткого отдыха.
   final Duration shortRestDuration;
+
+  /// Интервал работы между длинными отдыхами.
+  final Duration longRestInterval;
+
+  /// Длительность длинного отдыха.
+  final Duration longRestDuration;
 
   /// На сколько сдвигается предложение отдыха при отложении.
   final Duration postponeDuration;
@@ -44,7 +52,24 @@ final class WorkDayEngine {
   DateTime? _runningSince;
   DateTime? _pausedAt;
   DateTime? _workWindowEndsAt;
+
+  /// Момент следующего короткого отдыха по счётчику ритма.
+  DateTime? _nextShortRestAt;
+
+  /// Момент следующего длинного отдыха по счётчику ритма.
+  DateTime? _nextLongRestAt;
+
+  /// Момент ближайшего предложения отдыха: минимум из двух счётчиков или
+  /// отложенный момент.
   DateTime? _nextRestAt;
+
+  /// Вид отдыха, который будет предложен в [_nextRestAt]. Отложение его не
+  /// меняет, поэтому отложенный длинный отдых остаётся длинным.
+  RestKind? _offerKind;
+
+  /// Вид предложенного или идущего отдыха.
+  RestKind? _currentRestKind;
+
   bool _restOffered = false;
   DateTime? _restEndsAt;
   DateTime? _restStartedAt;
@@ -75,8 +100,11 @@ final class WorkDayEngine {
     _finishedAt = null;
     _runningSince = now;
     _workWindowEndsAt = window.endOn(now);
-    _nextRestAt = now.add(shortRestInterval);
+    _nextShortRestAt = now.add(shortRestInterval);
+    _nextLongRestAt = now.add(longRestInterval);
+    _scheduleNextOffer();
     _restOffered = false;
+    _currentRestKind = null;
     _restEndsAt = null;
     _restStartedAt = null;
     _restExercises = const <Exercise>[];
@@ -101,15 +129,17 @@ final class WorkDayEngine {
 
     _worked += now.difference(_runningSince!);
     _runningSince = null;
+    final kind = _currentRestKind!;
     _phase = WorkDayPhase.resting;
-    _restEndsAt = now.add(_restDurationFor(RestKind.short));
+    _restEndsAt = now.add(_restDurationFor(kind));
     _restStartedAt = now;
-    _restExercises = _takeExercises(_exerciseCountFor(RestKind.short));
+    _restExercises = _takeExercises(_exerciseCountFor(kind));
     _restOffered = false;
     _nextRestAt = null;
+    _offerKind = null;
     _workIntervalStartedAt = null;
     _postponesUsed = 0;
-    _events.add(WorkDayEvent.restStarted(now, RestKind.short));
+    _events.add(WorkDayEvent.restStarted(now, kind));
     return const WorkDayCommandAccepted();
   }
 
@@ -128,6 +158,12 @@ final class WorkDayEngine {
 
   /// Пропустить предложенный отдых: новый интервал работы начинается сразу
   /// с момента пропуска, долг за пропуск не копится.
+  ///
+  /// Счётчик короткого отдыха при пропуске начинается заново. Счётчик
+  /// длинного отдыха пропуск не обнуляет: следующий длинный отдых наступает
+  /// через интервал длинного отдыха от плановой точки пропущенного, а если
+  /// пропуск случился позже этого срока — от момента пропуска. Так пропуск не
+  /// создаёт ни долга, ни немедленного повторного предложения.
   WorkDayCommandResult skipRest(DateTime now) {
     _syncWithClock(now);
 
@@ -136,11 +172,21 @@ final class WorkDayEngine {
       return WorkDayCommandRejected(rejection);
     }
 
+    final kind = _currentRestKind!;
     _restOffered = false;
-    _nextRestAt = now.add(shortRestInterval);
+    _currentRestKind = null;
+    _nextShortRestAt = now.add(shortRestInterval);
+    if (kind == RestKind.long) {
+      final planned = _nextLongRestAt ?? now;
+      final nextLong = planned.add(longRestInterval);
+      _nextLongRestAt = nextLong.isAfter(now)
+          ? nextLong
+          : now.add(longRestInterval);
+    }
+    _scheduleNextOffer();
     _workIntervalStartedAt = now;
     _postponesUsed = 0;
-    _events.add(WorkDayEvent.restSkipped(now, RestKind.short));
+    _events.add(WorkDayEvent.restSkipped(now, kind));
     return const WorkDayCommandAccepted();
   }
 
@@ -160,8 +206,9 @@ final class WorkDayEngine {
 
     _postponesUsed++;
     _restOffered = false;
+    _currentRestKind = null;
     _nextRestAt = now.add(postponeDuration);
-    _events.add(WorkDayEvent.restPostponed(now, RestKind.short));
+    _events.add(WorkDayEvent.restPostponed(now, _offerKind!));
     return const WorkDayCommandAccepted();
   }
 
@@ -217,11 +264,11 @@ final class WorkDayEngine {
       return WorkDayCommandRejected(rejection);
     }
 
+    final pausedFor = now.difference(_pausedAt!);
+    _nextShortRestAt = _nextShortRestAt?.add(pausedFor);
+    _nextLongRestAt = _nextLongRestAt?.add(pausedFor);
     if (!_restOffered) {
-      final next = _nextRestAt;
-      if (next != null) {
-        _nextRestAt = next.add(now.difference(_pausedAt!));
-      }
+      _nextRestAt = _nextRestAt?.add(pausedFor);
     }
     _pausedAt = null;
     _runningSince = now;
@@ -263,8 +310,7 @@ final class WorkDayEngine {
     }
     _phase = WorkDayPhase.finished;
     _finishedAt = now;
-    _nextRestAt = null;
-    _restOffered = false;
+    _clearSchedule();
     _workIntervalStartedAt = null;
     _pausedAt = null;
     _postponesUsed = 0;
@@ -286,6 +332,7 @@ final class WorkDayEngine {
       workWindowEndsAt: _workWindowEndsAt,
       workIntervalStartedAt: _workIntervalStartedAt,
       restKind: _restKind,
+      restDuration: _restDuration,
       nextRestAt: _nextRestAtWithinWindow,
       untilNextRest: _untilNextRest(now),
       remainingRest: _remainingRest(now),
@@ -304,7 +351,13 @@ final class WorkDayEngine {
       : _phase;
 
   RestKind? get _restKind =>
-      _phase == WorkDayPhase.resting || _restOffered ? RestKind.short : null;
+      _phase == WorkDayPhase.resting || _restOffered ? _currentRestKind : null;
+
+  /// Плановая длительность предложенного или идущего отдыха.
+  Duration? get _restDuration {
+    final kind = _restKind;
+    return kind == null ? null : _restDurationFor(kind);
+  }
 
   void _syncWithClock(DateTime now) {
     _completeRestIfDue(now);
@@ -327,16 +380,25 @@ final class WorkDayEngine {
   /// Закончить идущий отдых в момент [endedAt]. За концом рабочего окна работа
   /// уже не начинается: день закрывается по концу окна.
   void _endRest(DateTime endedAt, RestFinishReason reason) {
+    final kind = _currentRestKind!;
+    final actualDuration = endedAt.difference(_restStartedAt ?? endedAt);
     final restFinished = _restFinishedEvent(endedAt, reason);
     _clearRest();
     _lastRestFinished = restFinished;
+
+    if (kind == RestKind.long) {
+      _nextLongRestAt = endedAt.add(longRestInterval);
+    } else {
+      // Отдых — не рабочее время: счётчик длинного отдыха сдвигается на него.
+      _nextLongRestAt = _nextLongRestAt?.add(actualDuration);
+    }
+    _nextShortRestAt = endedAt.add(shortRestInterval);
 
     final windowEndsAt = _workWindowEndsAt;
     if (windowEndsAt != null && !endedAt.isBefore(windowEndsAt)) {
       _phase = WorkDayPhase.finished;
       _finishedAt = windowEndsAt;
-      _nextRestAt = null;
-      _restOffered = false;
+      _clearSchedule();
       _workIntervalStartedAt = null;
       _postponesUsed = 0;
       _pausedAt = null;
@@ -352,25 +414,37 @@ final class WorkDayEngine {
 
     _phase = WorkDayPhase.running;
     _runningSince = endedAt;
-    _nextRestAt = endedAt.add(shortRestInterval);
+    _scheduleNextOffer();
     _workIntervalStartedAt = endedAt;
     _postponesUsed = 0;
     _events.add(restFinished);
   }
 
-  WorkDayEvent _restFinishedEvent(DateTime endedAt, RestFinishReason reason) =>
-      WorkDayEvent.restFinished(
-        endedAt,
-        RestKind.short,
-        restFinishReason: reason,
-        plannedDuration: _restDurationFor(RestKind.short),
-        actualDuration: endedAt.difference(_restStartedAt ?? endedAt),
-      );
+  WorkDayEvent _restFinishedEvent(DateTime endedAt, RestFinishReason reason) {
+    final kind = _currentRestKind ?? RestKind.short;
+    return WorkDayEvent.restFinished(
+      endedAt,
+      kind,
+      restFinishReason: reason,
+      plannedDuration: _restDurationFor(kind),
+      actualDuration: endedAt.difference(_restStartedAt ?? endedAt),
+    );
+  }
 
   void _clearRest() {
     _restEndsAt = null;
     _restStartedAt = null;
     _restExercises = const <Exercise>[];
+    _currentRestKind = null;
+  }
+
+  /// Убрать все запланированные отдыхи: день завершён.
+  void _clearSchedule() {
+    _nextShortRestAt = null;
+    _nextLongRestAt = null;
+    _nextRestAt = null;
+    _offerKind = null;
+    _restOffered = false;
   }
 
   void _closeAtWorkWindowEndIfDue(DateTime now) {
@@ -388,8 +462,7 @@ final class WorkDayEngine {
     }
     _phase = WorkDayPhase.finished;
     _finishedAt = endsAt;
-    _nextRestAt = null;
-    _restOffered = false;
+    _clearSchedule();
     _workIntervalStartedAt = null;
     _pausedAt = null;
     _postponesUsed = 0;
@@ -398,16 +471,35 @@ final class WorkDayEngine {
     );
   }
 
+  /// Предложить отдых, момент которого наступил. Когда счётчики совпадают или
+  /// длинный наступил раньше, предлагается длинный: отдыхи не идут очередью.
   void _offerRestIfDue(DateTime now) {
     if (_phase != WorkDayPhase.running || _restOffered) {
       return;
     }
     final next = _nextRestAtWithinWindow;
-    if (next == null || now.isBefore(next)) {
+    final kind = _offerKind;
+    if (next == null || kind == null || now.isBefore(next)) {
       return;
     }
     _restOffered = true;
-    _events.add(WorkDayEvent.restOffered(next, RestKind.short));
+    _currentRestKind = kind;
+    _events.add(WorkDayEvent.restOffered(next, kind));
+  }
+
+  /// Запланировать ближайшее предложение отдыха по двум счётчикам.
+  void _scheduleNextOffer() {
+    final shortAt = _nextShortRestAt;
+    final longAt = _nextLongRestAt;
+    if (shortAt == null && longAt == null) {
+      _nextRestAt = null;
+      _offerKind = null;
+      return;
+    }
+    final longWins =
+        longAt != null && (shortAt == null || !longAt.isAfter(shortAt));
+    _nextRestAt = longWins ? longAt : shortAt;
+    _offerKind = longWins ? RestKind.long : RestKind.short;
   }
 
   /// Момент следующего отдыха, только если он ещё может наступить внутри
@@ -494,27 +586,47 @@ final class WorkDayEngine {
     return _worked;
   }
 
-  /// Сколько упражнений показывает отдых: короткий — одно.
+  /// Сколько упражнений показывает отдых: короткий — одно, длинный — два из
+  /// разных категорий.
   int _exerciseCountFor(RestKind kind) => switch (kind) {
     RestKind.short => 1,
+    RestKind.long => 2,
   };
 
   /// Плановая длительность отдыха по его виду.
   Duration _restDurationFor(RestKind kind) => switch (kind) {
     RestKind.short => shortRestDuration,
+    RestKind.long => longRestDuration,
   };
 
-  /// Взять [count] упражнений по кругу. Курсор запоминается в состоянии движка,
-  /// поэтому первый отдых следующего раза не повторяет прошлое упражнение,
-  /// а после конца набора круг начинается заново.
+  /// Взять [count] упражнений по кругу, не повторяя уже взятые в этом отдыхе и
+  /// добавляя каждое следующее из другой категории. Курсор запоминается в
+  /// состоянии движка, поэтому первый отдых следующего раза не повторяет
+  /// прошлое упражнение, а после конца набора круг начинается заново.
   List<Exercise> _takeExercises(int count) {
     if (catalog.isEmpty) {
       return const <Exercise>[];
     }
     final taken = <Exercise>[];
-    for (var index = 0; index < count; index++) {
-      taken.add(catalog[_nextExerciseIndex]);
-      _nextExerciseIndex = (_nextExerciseIndex + 1) % catalog.length;
+    for (var slot = 0; slot < count; slot++) {
+      Exercise? chosen;
+      for (var step = 0; step < catalog.length; step++) {
+        final index = (_nextExerciseIndex + step) % catalog.length;
+        final candidate = catalog[index];
+        if (taken.contains(candidate)) {
+          continue;
+        }
+        if (taken.any((taken) => taken.category == candidate.category)) {
+          continue;
+        }
+        chosen = candidate;
+        _nextExerciseIndex = (index + 1) % catalog.length;
+        break;
+      }
+      if (chosen == null) {
+        break;
+      }
+      taken.add(chosen);
     }
     return List.unmodifiable(taken);
   }

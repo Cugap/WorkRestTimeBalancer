@@ -50,6 +50,7 @@ String commandLabel(WorkDayCommand command, WorkDayPhase phase) =>
 
 String restKindLabel(RestKind kind) => switch (kind) {
   RestKind.short => 'Короткий отдых',
+  RestKind.long => 'Длинный отдых',
 };
 
 String exerciseCategoryLabel(ExerciseCategory category) => switch (category) {

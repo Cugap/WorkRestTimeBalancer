@@ -31,11 +31,15 @@ WorkDayCommandResult? _dispatch(
 
 /// Проигрывает сценарий через публичный интерфейс ядра.
 ///
-/// Интервал отдыха по умолчанию длиннее рабочего окна: сценарии про механику
+/// Интервалы отдыха по умолчанию длиннее рабочего окна: сценарии про механику
 /// дня не должны зависеть от ритма отдыха.
 void _runScenario(List<Step> steps, {WorkDayEngine? engine}) {
   final day =
-      engine ?? WorkDayEngine(shortRestInterval: const Duration(hours: 12));
+      engine ??
+      WorkDayEngine(
+        shortRestInterval: const Duration(hours: 12),
+        longRestInterval: const Duration(hours: 12),
+      );
 
   for (final step in steps) {
     final now = _day(step.at);
@@ -119,6 +123,41 @@ void _runPostponeScenario(List<PostponeStep> steps) {
       snapshot.nextRestAt,
       step.nextRestAt,
       reason: 'следующий отдых на ${step.at}',
+    );
+  }
+}
+
+/// Шаг сценария ритма: к обычным ожиданиям добавляет вид предложенного или
+/// идущего отдыха.
+typedef RestKindStep = ({
+  Duration at,
+  WorkDayCommand? command,
+  WorkDayPhase phase,
+  Duration worked,
+  RestKind? restKind,
+});
+
+/// Проигрывает сценарий ритма через публичный интерфейс ядра.
+void _runRestKindScenario(WorkDayEngine day, List<RestKindStep> steps) {
+  for (final step in steps) {
+    final now = _day(step.at);
+    final result = _dispatch(day, step.command, now);
+
+    if (step.command != null) {
+      expect(
+        result,
+        isA<WorkDayCommandAccepted>(),
+        reason: 'команда на ${step.at}',
+      );
+    }
+
+    final snapshot = day.snapshot(now);
+    expect(snapshot.phase, step.phase, reason: 'фаза на ${step.at}');
+    expect(snapshot.worked, step.worked, reason: 'работа на ${step.at}');
+    expect(
+      snapshot.restKind,
+      step.restKind,
+      reason: 'вид отдыха на ${step.at}',
     );
   }
 }
@@ -291,6 +330,97 @@ void main() {
         rejection: null,
       ),
     ], engine: WorkDayEngine());
+  });
+
+  test('сценарий: длинный отдых вытесняет короткий', () {
+    _runRestKindScenario(
+      WorkDayEngine(
+        shortRestInterval: const Duration(minutes: 25),
+        longRestInterval: const Duration(minutes: 50),
+      ),
+      [
+        (
+          at: Duration.zero,
+          command: WorkDayCommand.start,
+          phase: WorkDayPhase.running,
+          worked: Duration.zero,
+          restKind: null,
+        ),
+        (
+          at: const Duration(minutes: 25),
+          command: null,
+          phase: WorkDayPhase.restOffered,
+          worked: const Duration(minutes: 25),
+          restKind: RestKind.short,
+        ),
+        (
+          at: const Duration(minutes: 25),
+          command: WorkDayCommand.skipRest,
+          phase: WorkDayPhase.running,
+          worked: const Duration(minutes: 25),
+          restKind: null,
+        ),
+        // Оба счётчика совпали на 50-й минуте: предлагается только длинный.
+        (
+          at: const Duration(minutes: 50),
+          command: null,
+          phase: WorkDayPhase.restOffered,
+          worked: const Duration(minutes: 50),
+          restKind: RestKind.long,
+        ),
+        (
+          at: const Duration(minutes: 50),
+          command: WorkDayCommand.skipRest,
+          phase: WorkDayPhase.running,
+          worked: const Duration(minutes: 50),
+          restKind: null,
+        ),
+        (
+          at: const Duration(minutes: 75),
+          command: null,
+          phase: WorkDayPhase.restOffered,
+          worked: const Duration(minutes: 75),
+          restKind: RestKind.short,
+        ),
+        (
+          at: const Duration(minutes: 75),
+          command: WorkDayCommand.startRest,
+          phase: WorkDayPhase.resting,
+          worked: const Duration(minutes: 75),
+          restKind: RestKind.short,
+        ),
+        (
+          at: const Duration(minutes: 78),
+          command: null,
+          phase: WorkDayPhase.running,
+          worked: const Duration(minutes: 75),
+          restKind: null,
+        ),
+        // Короткий отдых не сбрасывает длинный счётчик: на 103-й минуте снова
+        // совпадение, и длинный снова вытесняет короткий.
+        (
+          at: const Duration(minutes: 103),
+          command: null,
+          phase: WorkDayPhase.restOffered,
+          worked: const Duration(minutes: 100),
+          restKind: RestKind.long,
+        ),
+        (
+          at: const Duration(minutes: 103),
+          command: WorkDayCommand.startRest,
+          phase: WorkDayPhase.resting,
+          worked: const Duration(minutes: 100),
+          restKind: RestKind.long,
+        ),
+        (
+          at: const Duration(minutes: 113),
+          command: null,
+          phase: WorkDayPhase.running,
+          worked: const Duration(minutes: 100),
+          restKind: null,
+        ),
+      ],
+    );
   });
 
   test('сценарий: два отложения подряд, отказ третьему и сброс счётчика', () {
