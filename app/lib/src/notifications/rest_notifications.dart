@@ -119,6 +119,10 @@ final class RestNotifications
         presentBadge: false,
         presentSound: reminder.playSound,
       ),
+      windows: WindowsNotificationDetails(
+        // Без звука toast молчит; со звуком остаётся звук по умолчанию.
+        audio: reminder.playSound ? null : WindowsNotificationAudio.silent(),
+      ),
     );
   }
 

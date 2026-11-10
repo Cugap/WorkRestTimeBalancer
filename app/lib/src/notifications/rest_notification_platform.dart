@@ -84,6 +84,22 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
 
   final FlutterLocalNotificationsPlugin _plugin;
 
+  /// Плагин инициализирован и готов планировать. На Windows `initialize`
+  /// возвращает `false`, если не удалось зарегистрировать AUMID: без этого
+  /// планирование бросает `StateError`, а приложение должно работать без
+  /// напоминаний.
+  bool _ready = false;
+
+  /// Запланированные этим запуском напоминания: идентификатор и срок. Нужны,
+  /// чтобы на Windows отменять по одному и не снимать toast, который вот-вот
+  /// покажется.
+  final Map<int, DateTime> _scheduled = <int, DateTime>{};
+
+  /// Напоминание с таким запасом до срока считается показывающимся: Windows
+  /// доставляет запланированный toast в свою секунду, а раскладка пустеет в
+  /// момент предложения отдыха.
+  static const Duration _dueWindow = Duration(seconds: 1);
+
   @override
   Future<void> initialize({
     required DarwinInitializationSettings darwin,
@@ -91,19 +107,67 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
   }) async {
     const windows = WindowsInitializationSettings(
       appName: 'WorkRestTimeBalancer',
+      // AUMID — учётное имя приложения в центре уведомлений Windows. Плагин
+      // регистрирует его в HKCU; для показа toast MSIX-идентичность не нужна,
+      // но запланированный toast без ярлыка в меню «Пуск» система теряет —
+      // ярлык создаёт раннер (app/windows/runner/notification_shortcut.cpp).
       appUserModelId: 'Com.Cugap.WorkRestTimeBalancer',
       // Идентифицирует обработчик нажатия на Windows; менять нельзя.
       guid: 'd49b0314-ee7a-4626-bf79-97cdb8a991bb',
     );
-    await _plugin.initialize(
-      settings: InitializationSettings(
-        android: const AndroidInitializationSettings('app_icon'),
-        iOS: darwin,
-        windows: windows,
-      ),
-      onDidReceiveNotificationResponse: (_) => onOpen(),
-    );
+    _ready =
+        await _initializePlugin(
+          InitializationSettings(
+            android: const AndroidInitializationSettings('app_icon'),
+            iOS: darwin,
+            windows: windows,
+          ),
+          onOpen,
+        ) ??
+        false;
+    if (!_ready) {
+      debugPrint('rest reminders: platform did not initialize');
+      return;
+    }
+    // Напоминания прошлого запуска переживают перезапуск (Android и Windows):
+    // снимаем их до того, как ядро пришлёт актуальную раскладку.
+    await _cancelEverything();
     await _createAndroidChannels();
+  }
+
+  Future<bool?> _initializePlugin(
+    InitializationSettings settings,
+    VoidCallback onOpen,
+  ) async {
+    try {
+      return await _plugin.initialize(
+        settings: settings,
+        onDidReceiveNotificationResponse: (_) => onOpen(),
+      );
+    } on PlatformException catch (error) {
+      debugPrint('rest reminders: initialize failed: $error');
+      return false;
+    } on MissingPluginException catch (error) {
+      debugPrint('rest reminders: plugin missing: $error');
+      return false;
+    } on UnimplementedError catch (error) {
+      debugPrint('rest reminders: not implemented: $error');
+      return false;
+    }
+  }
+
+  /// Снять всё, включая уже показанные напоминания: используется при запуске,
+  /// чтобы не унаследовать расписание прошлого запуска.
+  Future<void> _cancelEverything() async {
+    try {
+      await _plugin.cancelAll();
+    } on PlatformException catch (error) {
+      debugPrint('rest reminders: platform error: $error');
+    } on MissingPluginException catch (error) {
+      debugPrint('rest reminders: plugin missing: $error');
+    } on UnimplementedError catch (error) {
+      debugPrint('rest reminders: not implemented: $error');
+    }
   }
 
   @override
@@ -166,6 +230,15 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
 
   @override
   Future<void> cancelAll() async {
+    if (!_ready) {
+      return;
+    }
+    final scheduled = Map<int, DateTime>.of(_scheduled);
+    _scheduled.clear();
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      await _cancelWindows(scheduled);
+      return;
+    }
     // Отменяются только ещё не показанные напоминания: доставленное
     // напоминание должно остаться на экране, пока человек на него не
     // отреагирует. Иначе пробуждение приложения в момент срабатывания сразу
@@ -182,6 +255,32 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
     }
   }
 
+  /// Windows: отменить свои напоминания по одному.
+  ///
+  /// `cancelAll` на Windows снимает и запланированные, и уже доставленные
+  /// toast'ы, а раскладка пустеет в тот же миг, когда отдых предлагается, то
+  /// есть ровно в момент доставки. Общий `cancelAll` успевал снять toast из
+  /// расписания до того, как система его покажет, и напоминание не видел никто.
+  /// Поэтому toast с наступившим сроком не отменяется: система покажет его и
+  /// оставит в центре уведомлений.
+  Future<void> _cancelWindows(Map<int, DateTime> scheduled) async {
+    final now = DateTime.now();
+    try {
+      for (final entry in scheduled.entries) {
+        if (!entry.value.isAfter(now.add(_dueWindow))) {
+          continue;
+        }
+        await _plugin.cancel(id: entry.key);
+      }
+    } on PlatformException catch (error) {
+      debugPrint('rest reminders: platform error: $error');
+    } on MissingPluginException catch (error) {
+      debugPrint('rest reminders: plugin missing: $error');
+    } on UnimplementedError catch (error) {
+      debugPrint('rest reminders: not implemented: $error');
+    }
+  }
+
   @override
   Future<void> schedule({
     required int id,
@@ -191,6 +290,14 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
     required NotificationDetails details,
     required String payload,
   }) async {
+    if (!_ready) {
+      return;
+    }
+    // Точка отдыха могла наступить между расчётом раскладки и записью в порт:
+    // плагин не планирует в прошлое, а прошедшее напоминание уже не нужно.
+    if (!at.isAfter(DateTime.now())) {
+      return;
+    }
     final mode = await _scheduleMode();
     try {
       await _plan(
@@ -202,6 +309,7 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
         payload: payload,
         mode: mode,
       );
+      _scheduled[id] = at;
     } on PlatformException catch (error) {
       // Разрешение могли отозвать между проверкой и планированием: неточное
       // напоминание лучше пропущенного.
@@ -215,6 +323,9 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
         payload: payload,
         mode: AndroidScheduleMode.inexactAllowWhileIdle,
       );
+      _scheduled[id] = at;
+    } on ArgumentError catch (error) {
+      debugPrint('rest reminders: schedule rejected: $error');
     }
   }
 

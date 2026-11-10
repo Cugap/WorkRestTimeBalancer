@@ -91,6 +91,26 @@ void main() {
       expect(ios.sound, isNull);
     });
 
+    test('включённый звук оставляет Windows звук по умолчанию', () async {
+      await notifications.schedule(_short(_at(9, 25)));
+
+      final details = platform.scheduled.single.details;
+      // Без элемента <audio> toast звучит системным звуком по умолчанию.
+      expect(details.windows?.audio, isNull);
+      expect(details.android?.playSound, isTrue);
+      expect(details.android?.silent, isFalse);
+    });
+
+    test('выключенный звук делает toast Windows тихим', () async {
+      await notifications.schedule(_short(_at(9, 25), playSound: false));
+
+      final details = platform.scheduled.single.details;
+      // <audio silent="true"> — иначе Windows играет звук всегда.
+      expect(details.windows?.audio, isNotNull);
+      expect(details.windows?.audio?.isSilent, isTrue);
+      expect(details.android?.silent, isTrue);
+    });
+
     test('повторное планирование той же точки сохраняет номер', () async {
       await notifications.schedule(_short(_at(9, 25)));
       await notifications.schedule(_short(_at(9, 25)));

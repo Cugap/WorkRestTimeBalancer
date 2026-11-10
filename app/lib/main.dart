@@ -10,6 +10,7 @@ import 'src/notifications/rest_notifications.dart';
 import 'src/persistence.dart';
 import 'src/preferences_document_store.dart';
 import 'src/rest_screen.dart';
+import 'src/window_activation.dart';
 import 'src/work_day_screen.dart';
 
 Future<void> main() async {
@@ -132,6 +133,8 @@ class _WorkRestAppState extends State<WorkRestApp> {
         snapshot.phase != WorkDayPhase.resting) {
       return;
     }
+    // Окно могло быть свёрнуто: тогда экран отдыха остался бы невидимым.
+    activateAppWindow();
     _restScreenOpen = true;
     unawaited(
       navigator
