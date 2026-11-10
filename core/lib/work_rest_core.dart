@@ -7,6 +7,8 @@ export 'src/exercise_catalog.dart';
 export 'src/local_document_store.dart';
 export 'src/persisted_document.dart';
 export 'src/rest_kind.dart';
+export 'src/rest_reminder.dart';
+export 'src/rest_reminder_port.dart';
 export 'src/rhythm_settings.dart';
 export 'src/settings_validation.dart';
 export 'src/work_day_command.dart';

@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 
 import 'clock.dart';
 import 'labels.dart';
+import 'notifications/reminder_status.dart';
 
 /// Поля экрана настроек. Ключи устойчивы: тесты ищут поля по ним, а не по
 /// текстам.
@@ -30,6 +33,7 @@ class SettingsScreen extends StatefulWidget {
     required this.engine,
     required this.clock,
     this.onStateChanged,
+    this.reminderStatus,
   });
 
   final WorkDayEngine engine;
@@ -38,6 +42,10 @@ class SettingsScreen extends StatefulWidget {
   /// Вызывается после принятого изменения настроек, чтобы оболочка сохранила
   /// документ ядра.
   final VoidCallback? onStateChanged;
+
+  /// Разрешения напоминаний на платформе. Null — платформа без напоминаний:
+  /// переключатели остаются, а строки о разрешениях нет.
+  final ReminderStatusSource? reminderStatus;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -50,11 +58,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   _Field? _errorField;
   String? _errorText;
+  bool _notificationsEnabled = true;
+  bool _soundEnabled = true;
+  ReminderStatus? _reminderStatus;
 
   @override
   void initState() {
     super.initState();
-    _fill(widget.engine.snapshot(widget.clock.now()).settings);
+    final settings = widget.engine.snapshot(widget.clock.now()).settings;
+    _fill(settings);
+    _notificationsEnabled = settings.notificationsEnabled;
+    _soundEnabled = settings.soundEnabled;
+    unawaited(_refreshReminderStatus());
   }
 
   @override
@@ -174,6 +189,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
+  /// Переключатели напоминаний действуют сразу, не дожидаясь «Сохранить»:
+  /// ядро перепланирует напоминания в тот же момент.
+  void _setNotificationsEnabled(bool value) {
+    _applyImmediately(
+      (settings) => settings.copyWith(notificationsEnabled: value),
+      () => _notificationsEnabled = value,
+    );
+  }
+
+  void _setSoundEnabled(bool value) {
+    _applyImmediately(
+      (settings) => settings.copyWith(soundEnabled: value),
+      () => _soundEnabled = value,
+    );
+  }
+
+  void _applyImmediately(
+    RhythmSettings Function(RhythmSettings current) change,
+    void Function() applyLocal,
+  ) {
+    final now = widget.clock.now();
+    final current = widget.engine.snapshot(now).settings;
+    switch (widget.engine.updateSettings(now, change(current))) {
+      case WorkDayCommandAccepted():
+        setState(() {
+          applyLocal();
+          _errorField = null;
+          _errorText = null;
+        });
+        widget.onStateChanged?.call();
+      case WorkDayCommandRejected(:final reason):
+        setState(() {
+          _errorField = null;
+          _errorText = rejectionText(reason);
+        });
+    }
+  }
+
+  Future<void> _refreshReminderStatus() async {
+    final source = widget.reminderStatus;
+    if (source == null) {
+      return;
+    }
+    final status = await source.read();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _reminderStatus = status);
+  }
+
+  Future<void> _requestExactAlarms() async {
+    final source = widget.reminderStatus;
+    if (source == null) {
+      return;
+    }
+    final status = await source.requestExactAlarms();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _reminderStatus = status);
+  }
+
   _Field? _fieldFor(RejectionReason reason) => switch (reason) {
     RejectionReason.workWindowStartNotBeforeEnd => _Field.workStart,
     RejectionReason.shortRestIntervalOutOfRange => _Field.shortRestInterval,
@@ -243,6 +320,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// Строки о разрешениях напоминаний: экран честно показывает, что точные
+  /// напоминания недоступны, и даёт попросить разрешение.
+  List<Widget> _reminderStatusChildren(ThemeData theme) {
+    final status = _reminderStatus;
+    if (widget.reminderStatus == null || status == null) {
+      return const <Widget>[];
+    }
+    return [
+      Text(
+        status.exactAlarms
+            ? 'Напоминания точные: система будит приложение в назначенную минуту'
+            : 'Напоминания неточные: нет разрешения на точные будильники, '
+                  'система может задержать их на несколько минут',
+        key: const ValueKey('settings-exact-alarms'),
+        style: theme.textTheme.bodyMedium,
+      ),
+      if (!status.notificationsAllowed) ...[
+        const SizedBox(height: 4),
+        Text(
+          'Уведомления приложения запрещены в системе',
+          key: const ValueKey('settings-notifications-blocked'),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.error,
+          ),
+        ),
+      ],
+      if (!status.exactAlarms) ...[
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const ValueKey('settings-request-exact-alarms'),
+            onPressed: _requestExactAlarms,
+            child: const Text('Разрешить точные напоминания'),
+          ),
+        ),
+      ],
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -257,6 +374,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                SwitchListTile(
+                  key: const ValueKey('settings-notifications'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Напоминания'),
+                  subtitle: const Text('Уведомление, когда пора отдохнуть'),
+                  value: _notificationsEnabled,
+                  onChanged: _setNotificationsEnabled,
+                ),
+                SwitchListTile(
+                  key: const ValueKey('settings-sound'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Звук напоминаний'),
+                  subtitle: const Text('Выключенный звук не мешает окружающим'),
+                  value: _soundEnabled,
+                  onChanged: _setSoundEnabled,
+                ),
+                ..._reminderStatusChildren(theme),
+                const SizedBox(height: 16),
                 for (final field in _Field.values) ...[
                   TextField(
                     key: ValueKey('settings-${field.key}'),

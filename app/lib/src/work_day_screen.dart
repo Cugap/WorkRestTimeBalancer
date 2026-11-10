@@ -5,6 +5,7 @@ import 'package:work_rest_core/work_rest_core.dart';
 
 import 'clock.dart';
 import 'labels.dart';
+import 'notifications/reminder_status.dart';
 import 'rest_screen.dart';
 import 'settings_screen.dart';
 
@@ -15,6 +16,7 @@ class WorkDayScreen extends StatefulWidget {
     required this.engine,
     required this.clock,
     this.onStateChanged,
+    this.reminderStatus,
   });
 
   final WorkDayEngine engine;
@@ -23,6 +25,10 @@ class WorkDayScreen extends StatefulWidget {
   /// Вызывается после каждого принятого изменения состояния: оболочка
   /// сохраняет документ ядра. Экран о хранилище ничего не знает.
   final VoidCallback? onStateChanged;
+
+  /// Источник состояния разрешений напоминаний: экран настроек показывает его
+  /// как есть. Null — платформа без напоминаний.
+  final ReminderStatusSource? reminderStatus;
 
   @override
   State<WorkDayScreen> createState() => _WorkDayScreenState();
@@ -109,6 +115,7 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
           engine: widget.engine,
           clock: widget.clock,
           onStateChanged: widget.onStateChanged,
+          reminderStatus: widget.reminderStatus,
         ),
       ),
     );
