@@ -39,6 +39,77 @@ _Channel _channelFor(RestKind kind) => switch (kind) {
 /// Payload напоминания: нажатие на любое напоминание открывает экран отдыха.
 const String restReminderPayload = 'rest:offer';
 
+/// Заголовок напоминания: одинаков для всех видов отдыха.
+const String restReminderTitle = 'Пора отдохнуть';
+
+/// Напоминание, переведённое в термины плагина: идентификатор, текст и
+/// платформенные детали. Отделено от адаптера, чтобы звук и раскладку можно
+/// было проверить тестами без настоящей платформы.
+@immutable
+final class PlannedNotification {
+  const PlannedNotification({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.details,
+  });
+
+  final int id;
+  final String title;
+  final String body;
+  final NotificationDetails details;
+
+  /// Идентификатор уведомления: минута дня и вид отдыха. Раскладка не выходит
+  /// за текущий рабочий день, поэтому совпадений быть не может, а номер
+  /// остаётся прежним при повторном планировании той же точки.
+  static int idFor(RestReminder reminder) =>
+      (reminder.at.hour * 60 + reminder.at.minute) * 10 + reminder.kind.index;
+}
+
+/// Перевести напоминание ядра в детали плагина.
+///
+/// На Windows звук задаётся элементом `<audio silent="true">`: без него toast
+/// всегда звучит, а настройка звука должна действовать на всех платформах.
+PlannedNotification planNotification(RestReminder reminder) {
+  final channel = _channelFor(reminder.kind);
+  return PlannedNotification(
+    id: PlannedNotification.idFor(reminder),
+    title: restReminderTitle,
+    body:
+        '${restKindLabel(reminder.kind)} · '
+        '${formatHoursMinutes(reminder.duration)}',
+    details: NotificationDetails(
+      android: AndroidNotificationDetails(
+        channel.id,
+        channel.name,
+        channelDescription: channel.description,
+        importance: Importance.high,
+        priority: Priority.high,
+        category: AndroidNotificationCategory.reminder,
+        // Напоминание должно быть видно и на заблокированном экране, а
+        // полноэкранное намерение поднимает экран отдыха поверх замка
+        // (спецификация: «уведомление с full-screen intent на Android»).
+        fullScreenIntent: true,
+        visibility: NotificationVisibility.public,
+        // Канал создан со звуком: «тихое» напоминание глушится на уровне
+        // самого уведомления, иначе звук канала не отключить.
+        playSound: reminder.playSound,
+        enableVibration: reminder.playSound,
+        silent: !reminder.playSound,
+        autoCancel: true,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentSound: reminder.playSound,
+      ),
+      windows: WindowsNotificationDetails(
+        // Без звука toast молчит; со звуком остаётся звук по умолчанию.
+        audio: reminder.playSound ? null : WindowsNotificationAudio.silent(),
+      ),
+    ),
+  );
+}
+
 /// Напоминания средствами платформы: адаптер порта ядра
 /// [RestReminderPort] на `flutter_local_notifications`.
 ///
@@ -53,8 +124,24 @@ final class RestNotifications
 
   final FlutterLocalNotificationsPlugin _plugin;
 
+  /// Плагин инициализирован и готов планировать. На Windows `initialize`
+  /// возвращает `false`, если не удалось зарегистрировать AUMID: без этого
+  /// планирование бросает `StateError`, а приложение должно работать без
+  /// напоминаний.
+  bool _ready = false;
+
   /// Нажатие на напоминание: оболочка открывает экран отдыха.
   VoidCallback? onOpenRequested;
+
+  /// Запланированные этим запуском напоминания: идентификатор и срок. Нужны,
+  /// чтобы на Windows отменять по одному и не снимать toast, который вот-вот
+  /// покажется.
+  final Map<int, DateTime> _scheduled = <int, DateTime>{};
+
+  /// Напоминание с таким запасом до срока считается показывающимся: Windows
+  /// доставляет запланированный toast в свою секунду, а раскладка пустеет в
+  /// момент предложения отдыха.
+  static const Duration _dueWindow = Duration(seconds: 1);
 
   /// Инициализация плагина: часовой пояс, каналы Android и обработчик
   /// нажатия. Без инициализации планировать напоминания нельзя.
@@ -64,18 +151,33 @@ final class RestNotifications
     const darwin = DarwinInitializationSettings();
     const windows = WindowsInitializationSettings(
       appName: 'WorkRestTimeBalancer',
+      // AUMID — учётное имя приложения в центре уведомлений Windows. На время
+      // разработки плагин регистрирует его в HKCU, MSIX-идентичность для
+      // показа toast не нужна (см. комментарий в тикете 12).
       appUserModelId: 'Com.Cugap.WorkRestTimeBalancer',
       // Идентифицирует обработчик нажатия на Windows; менять нельзя.
       guid: 'd49b0314-ee7a-4626-bf79-97cdb8a991bb',
     );
-    await _plugin.initialize(
-      settings: const InitializationSettings(
-        android: android,
-        iOS: darwin,
-        windows: windows,
-      ),
-      onDidReceiveNotificationResponse: (_) => onOpenRequested?.call(),
-    );
+    _ready =
+        await _guarded(
+          () => _plugin.initialize(
+            settings: const InitializationSettings(
+              android: android,
+              iOS: darwin,
+              windows: windows,
+            ),
+            onDidReceiveNotificationResponse: (_) => onOpenRequested?.call(),
+          ),
+          fallback: false,
+        ) ??
+        false;
+    if (!_ready) {
+      debugPrint('rest reminders: platform did not initialize');
+      return;
+    }
+    // Напоминания прошлого запуска переживают перезапуск (Android и Windows):
+    // снимаем их до того, как ядро пришлёт актуальную раскладку.
+    await _ignoreFailures(_plugin.cancelAll);
     await _createAndroidChannels();
   }
 
@@ -146,71 +248,76 @@ final class RestNotifications
 
   @override
   Future<void> schedule(RestReminder reminder) async {
-    final channel = _channelFor(reminder.kind);
-    final details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        channel.id,
-        channel.name,
-        channelDescription: channel.description,
-        importance: Importance.high,
-        priority: Priority.high,
-        category: AndroidNotificationCategory.reminder,
-        // Напоминание должно быть видно и на заблокированном экране, а
-        // полноэкранное намерение поднимает экран отдыха поверх замка
-        // (спецификация: «уведомление с full-screen intent на Android»).
-        fullScreenIntent: true,
-        visibility: NotificationVisibility.public,
-        // Канал создан со звуком: «тихое» напоминание глушится на уровне
-        // самого уведомления, иначе звук канала не отключить.
-        playSound: reminder.playSound,
-        enableVibration: reminder.playSound,
-        silent: !reminder.playSound,
-        autoCancel: true,
-      ),
-      iOS: DarwinNotificationDetails(
-        presentAlert: true,
-        presentSound: reminder.playSound,
-      ),
-    );
-
+    if (!_ready) {
+      return;
+    }
+    // Точка отдыха могла наступить между расчётом раскладки и записью в порт:
+    // плагин не планирует в прошлое, а прошедшее напоминание уже не нужно.
+    if (!reminder.at.isAfter(DateTime.now())) {
+      return;
+    }
+    final planned = planNotification(reminder);
     final mode = await _scheduleMode();
     try {
-      await _plan(reminder, details, mode);
+      await _plan(planned, reminder.at, mode);
+      _scheduled[planned.id] = reminder.at;
     } on PlatformException catch (error) {
       // Разрешение могли отозвать между проверкой и планированием: неточное
       // напоминание лучше пропущенного.
       debugPrint('rest reminders: exact schedule failed: $error');
-      await _plan(reminder, details, AndroidScheduleMode.inexactAllowWhileIdle);
+      await _plan(
+        planned,
+        reminder.at,
+        AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+      _scheduled[planned.id] = reminder.at;
+    } on ArgumentError catch (error) {
+      debugPrint('rest reminders: schedule rejected: $error');
     }
   }
 
   @override
-  Future<void> cancelAll() => _ignoreFailures(() async {
-    // На Android отменяет и показанные, и запланированные напоминания.
-    await _plugin.cancelAll();
-  });
+  Future<void> cancelAll() async {
+    if (!_ready) {
+      return;
+    }
+    final scheduled = Map<int, DateTime>.of(_scheduled);
+    _scheduled.clear();
+    await _ignoreFailures(() async {
+      if (defaultTargetPlatform != TargetPlatform.windows) {
+        // На Android и iOS отменяет и запланированные, и уже показанные
+        // напоминания.
+        await _plugin.cancelAll();
+        return;
+      }
+      // На Windows раскладка пустеет в тот же миг, когда отдых предлагается,
+      // то есть ровно тогда, когда toast должен показаться. `cancelAll`
+      // успевал снять его из расписания до доставки, и напоминание не видел
+      // никто. Поэтому toast с наступившим сроком не отменяется: система
+      // покажет его и оставит в центре уведомлений.
+      final now = DateTime.now();
+      for (final entry in scheduled.entries) {
+        if (!entry.value.isAfter(now.add(_dueWindow))) {
+          continue;
+        }
+        await _plugin.cancel(id: entry.key);
+      }
+    });
+  }
 
   Future<void> _plan(
-    RestReminder reminder,
-    NotificationDetails details,
+    PlannedNotification notification,
+    DateTime at,
     AndroidScheduleMode mode,
   ) => _plugin.zonedSchedule(
-    id: _reminderId(reminder),
-    title: 'Пора отдохнуть',
-    body:
-        '${restKindLabel(reminder.kind)} · '
-        '${formatHoursMinutes(reminder.duration)}',
-    scheduledDate: tz.TZDateTime.from(reminder.at, tz.local),
-    notificationDetails: details,
+    id: notification.id,
+    title: notification.title,
+    body: notification.body,
+    scheduledDate: tz.TZDateTime.from(at, tz.local),
+    notificationDetails: notification.details,
     androidScheduleMode: mode,
     payload: restReminderPayload,
   );
-
-  /// Идентификатор уведомления: минута дня и вид отдыха. Раскладка не выходит
-  /// за текущий рабочий день, поэтому совпадений быть не может, а номер
-  /// остаётся прежним при повторном планировании той же точки.
-  int _reminderId(RestReminder reminder) =>
-      (reminder.at.hour * 60 + reminder.at.minute) * 10 + reminder.kind.index;
 
   Future<AndroidScheduleMode> _scheduleMode() => _guarded(() async {
     final exact = await _android?.canScheduleExactNotifications() ?? false;
