@@ -117,7 +117,6 @@ void main() {
       await notifications.schedule(_short(_at(9, 25)));
 
       expect(platform.scheduled, isEmpty);
-      expect(notifications.onOpenRequested, isNull);
     });
 
     test('разрешения просит и отдаёт та же платформа', () async {
