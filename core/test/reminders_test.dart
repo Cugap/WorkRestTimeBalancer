@@ -330,27 +330,30 @@ void main() {
       expect(desk.port.cancelAllCalls, cancels);
     });
 
-    test('сбой записи раскладки повторяется при следующей смене состояния', () async {
-      final port = FlakyReminderPort();
-      final engine = WorkDayEngine(reminderLimit: 2, reminders: port);
+    test(
+      'сбой записи раскладки повторяется при следующей смене состояния',
+      () async {
+        final port = FlakyReminderPort();
+        final engine = WorkDayEngine(reminderLimit: 2, reminders: port);
 
-      engine.startWorkDay(_at(9));
-      await engine.remindPlanApplied;
+        engine.startWorkDay(_at(9));
+        await engine.remindPlanApplied;
 
-      // Первая запись упала: раскладка не считается переданной.
-      expect(engine.lastReminderFailure, isNotNull);
-      expect(port.planned, isEmpty);
+        // Первая запись упала: раскладка не считается переданной.
+        expect(engine.lastReminderFailure, isNotNull);
+        expect(port.planned, isEmpty);
 
-      port.failing = false;
-      engine.pause(_at(9, 10));
-      await engine.remindPlanApplied;
-      engine.resume(_at(9, 20));
-      await engine.remindPlanApplied;
+        port.failing = false;
+        engine.pause(_at(9, 10));
+        await engine.remindPlanApplied;
+        engine.resume(_at(9, 20));
+        await engine.remindPlanApplied;
 
-      // Повторная попытка удалась: ошибка снята, раскладка на месте.
-      expect(engine.lastReminderFailure, isNull);
-      expect(port.planned, [_short(_at(9, 35)), _short(_at(10, 3))]);
-    });
+        // Повторная попытка удалась: ошибка снята, раскладка на месте.
+        expect(engine.lastReminderFailure, isNull);
+        expect(port.planned, [_short(_at(9, 35)), _short(_at(10, 3))]);
+      },
+    );
 
     test('после перезапуска напоминания планируются заново', () async {
       final first = ReminderDesk(reminderLimit: 2);
@@ -411,6 +414,89 @@ void main() {
       }
 
       expect(offered, planned);
+    });
+
+    test('лимит раскладки по умолчанию укладывается в лимит iOS', () async {
+      // iOS хранит около 64 запланированных уведомлений и молча выбрасывает
+      // лишние, поэтому заранее планируются только ближайшие восемь точек.
+      expect(defaultReminderLimit, 8);
+      expect(defaultReminderLimit, lessThan(64));
+
+      final port = RecordingReminderPort();
+      final engine = WorkDayEngine(reminders: port);
+      engine.startWorkDay(_at(9));
+      await engine.remindPlanApplied;
+
+      expect(port.planned, hasLength(defaultReminderLimit));
+      expect(port.planned.last.at.isBefore(_at(18)), isTrue);
+    });
+
+    test('без фонового таймера возврат догоняет день одним отдыхом', () async {
+      // iOS не исполняет код в фоне: между началом дня и возвратом в
+      // приложение не было ни одного снимка, а приложение было выгружено.
+      final first = ReminderDesk(reminderLimit: 2);
+      expect(await first.at(_at(9), WorkDayCommand.start), [
+        _short(_at(9, 25)),
+        _short(_at(9, 53)),
+      ]);
+
+      final port = RecordingReminderPort();
+      final restored = WorkDayEngine.restore(
+        first.engine.document(),
+        reminderLimit: 2,
+        reminders: port,
+      );
+      final snapshot = restored.snapshot(_at(10, 5));
+      await restored.remindPlanApplied;
+
+      // Фаза и отдых соответствуют реально прошедшему времени, а не тому
+      // состоянию, в котором приложение уснуло.
+      expect(snapshot.phase, WorkDayPhase.restOffered);
+      expect(snapshot.restKind, RestKind.short);
+      expect(snapshot.restDuration, const Duration(minutes: 3));
+
+      // Прошедшие точки записаны пропусками, предложение ровно одно: очередь
+      // из пропущенных отдыхов не копится.
+      expect(
+        snapshot.events.where(
+          (event) => event.type == WorkDayEventType.restSkipped,
+        ),
+        hasLength(2),
+      );
+      expect(
+        snapshot.events.where(
+          (event) => event.type == WorkDayEventType.restOffered,
+        ),
+        hasLength(1),
+      );
+
+      // Пока предложение на экране, напоминать не о чем: прошлые точки из
+      // раскладки не возвращаются.
+      expect(port.planned, isEmpty);
+    });
+
+    test('процесс выжил, но тиков не было: предложение одно', () async {
+      final desk = ReminderDesk(reminderLimit: 2);
+      await desk.at(_at(9), WorkDayCommand.start);
+
+      // Час без единого вызова снимка — так выглядит свёрнутое приложение на
+      // iOS. По возвращении отдых предлагается один раз, а не по разу на
+      // каждую пропущенную точку.
+      final snapshot = desk.engine.snapshot(_at(10, 5));
+      await desk.engine.remindPlanApplied;
+
+      expect(snapshot.phase, WorkDayPhase.restOffered);
+      expect(
+        snapshot.events.where(
+          (event) => event.type == WorkDayEventType.restOffered,
+        ),
+        hasLength(1),
+      );
+
+      // Раскладка, сделанная до сворачивания, заменена: прошлых напоминаний в
+      // ней не остаётся.
+      expect(desk.port.planned, isEmpty);
+      expect(desk.port.cancelAllCalls, greaterThan(1));
     });
   });
 }

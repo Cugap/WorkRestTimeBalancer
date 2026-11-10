@@ -208,6 +208,26 @@ void main() {
     expect(key('settings-request-exact-alarms'), findsNothing);
     expect(find.textContaining('точные'), findsOneWidget);
   });
+
+  testWidgets('на iOS настройки не обещают точных будильников', (tester) async {
+    final status = FakeReminderStatus(
+      const ReminderStatus(
+        exactAlarms: true,
+        notificationsAllowed: false,
+        exactAlarmsApplicable: false,
+      ),
+    );
+    await tester.pumpWidget(
+      WorkRestApp(engine: engine, clock: clock, reminderStatus: status),
+    );
+    await openSettings(tester);
+
+    // Точных будильников на iOS нет, поэтому про точность ничего не сказано,
+    // а запрет уведомлений в системе виден.
+    expect(key('settings-exact-alarms'), findsNothing);
+    expect(key('settings-request-exact-alarms'), findsNothing);
+    expect(key('settings-notifications-blocked'), findsOneWidget);
+  });
 }
 
 /// Порт напоминаний, который запоминает последнюю раскладку.

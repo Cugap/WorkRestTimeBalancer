@@ -7,6 +7,7 @@ final class ReminderStatus {
   const ReminderStatus({
     required this.exactAlarms,
     required this.notificationsAllowed,
+    this.exactAlarmsApplicable = true,
   });
 
   /// Разрешены точные будильники: напоминание приходит в назначенную минуту.
@@ -15,18 +16,27 @@ final class ReminderStatus {
   /// Система разрешает показывать уведомления приложения.
   final bool notificationsAllowed;
 
+  /// Платформа вообще умеет точные будильники. На iOS их нет: локальные
+  /// уведомления доставляет система, поэтому экран настроек не рассказывает
+  /// про точность и не предлагает разрешение, которого не существует.
+  final bool exactAlarmsApplicable;
+
   @override
   bool operator ==(Object other) =>
       other is ReminderStatus &&
       other.exactAlarms == exactAlarms &&
-      other.notificationsAllowed == notificationsAllowed;
+      other.notificationsAllowed == notificationsAllowed &&
+      other.exactAlarmsApplicable == exactAlarmsApplicable;
 
   @override
-  int get hashCode => Object.hash(exactAlarms, notificationsAllowed);
+  int get hashCode =>
+      Object.hash(exactAlarms, notificationsAllowed, exactAlarmsApplicable);
 
   @override
   String toString() =>
-      'ReminderStatus(exact: $exactAlarms, allowed: $notificationsAllowed)';
+      'ReminderStatus(exact: $exactAlarms, '
+      'allowed: $notificationsAllowed, '
+      'exactApplicable: $exactAlarmsApplicable)';
 }
 
 /// Источник состояния разрешений напоминаний. Экран настроек читает его и
