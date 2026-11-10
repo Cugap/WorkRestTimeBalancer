@@ -185,10 +185,22 @@ final class RestNotifications
   }
 
   @override
-  Future<void> cancelAll() => _ignoreFailures(() async {
-    // На Android отменяет и показанные, и запланированные напоминания.
-    await _plugin.cancelAll();
-  });
+  Future<void> cancelAll() async {
+    // Отменяются только ещё не показанные напоминания: доставленное
+    // напоминание должно остаться на экране, пока человек на него не
+    // отреагирует. Иначе пробуждение приложения в момент срабатывания сразу
+    // снимало бы только что показанное уведомление.
+    try {
+      await _plugin.cancelAllPendingNotifications();
+    } on MissingPluginException {
+      // Windows-реализация не умеет отменять только запланированные.
+      await _ignoreFailures(() => _plugin.cancelAll());
+    } on PlatformException {
+      await _ignoreFailures(() => _plugin.cancelAll());
+    } on UnimplementedError {
+      await _ignoreFailures(() => _plugin.cancelAll());
+    }
+  }
 
   Future<void> _plan(
     RestReminder reminder,
