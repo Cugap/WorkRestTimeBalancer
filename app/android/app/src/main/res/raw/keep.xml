@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Иконка уведомления используется по имени ресурса: без этого правила R8
+     в релизной сборке выбрасывает её, и уведомление приходит без иконки. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/app_icon" />

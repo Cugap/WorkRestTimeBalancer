@@ -6,12 +6,17 @@ plugins {
 
 android {
     namespace = "com.cugap.work_rest_time_balancer"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_local_notifications 23 требует compileSdk 37; Flutter по
+    // умолчанию даёт 36.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Плагин уведомлений планирует время через java.time: без десугаринга
+        // сборка падает на старых API.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -27,6 +32,7 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -42,6 +48,10 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {

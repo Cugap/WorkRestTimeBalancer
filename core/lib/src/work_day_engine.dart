@@ -1,13 +1,20 @@
+import 'dart:async';
+
 import 'exercise.dart';
 import 'exercise_catalog.dart';
 import 'persisted_document.dart';
 import 'rest_kind.dart';
+import 'rest_reminder.dart';
+import 'rest_reminder_port.dart';
 import 'rhythm_settings.dart';
 import 'settings_validation.dart';
 import 'work_day_command.dart';
 import 'work_day_event.dart';
 import 'work_day_snapshot.dart';
 import 'work_window.dart';
+
+/// Сколько ближайших точек отдыха ядро напоминает заранее по умолчанию.
+const int defaultReminderLimit = 8;
 
 /// Движок рабочего дня. Не читает системное время: каждый вызов получает момент
 /// от оболочки, поэтому поведение полностью воспроизводимо в тестах.
@@ -25,7 +32,10 @@ final class WorkDayEngine {
     this.postponeDuration = const Duration(minutes: 5),
     this.maxPostponements = 2,
     this.catalog = exerciseCatalog,
-  }) : _settings = settings;
+    this.reminderLimit = defaultReminderLimit,
+    RestReminderPort? reminders,
+  }) : _settings = settings,
+       _reminders = reminders;
 
   /// Восстановить движок из документа: настройки, журнал и, если он есть,
   /// текущий рабочий день. Состояние дня применяется как есть; отставание по
@@ -36,12 +46,16 @@ final class WorkDayEngine {
     Duration postponeDuration = const Duration(minutes: 5),
     int maxPostponements = 2,
     List<Exercise> catalog = exerciseCatalog,
+    int reminderLimit = defaultReminderLimit,
+    RestReminderPort? reminders,
   }) {
     final engine = WorkDayEngine(
       settings: document.settings,
       postponeDuration: postponeDuration,
       maxPostponements: maxPostponements,
       catalog: catalog,
+      reminderLimit: reminderLimit,
+      reminders: reminders,
     );
     engine._events.addAll(document.journal);
     final day = document.day;
@@ -62,6 +76,16 @@ final class WorkDayEngine {
 
   /// Набор упражнений, из которого ядро выбирает их по кругу.
   final List<Exercise> catalog;
+
+  /// Сколько ближайших точек отдыха напоминать заранее. Небольшое окно нужно
+  /// из-за лимита на число запланированных уведомлений на iOS (около 64) и
+  /// ради того, чтобы каждая смена состояния переписывала только актуальные
+  /// напоминания. По умолчанию [defaultReminderLimit].
+  final int reminderLimit;
+
+  /// Порт напоминаний; null — ядро работает без напоминаний (тесты ядра и
+  /// платформы без уведомлений).
+  final RestReminderPort? _reminders;
 
   /// Рабочее окно из действующих настроек. Оно есть всегда: движок хранит
   /// только допустимые настройки.
@@ -223,9 +247,10 @@ final class WorkDayEngine {
   }
 
   /// Начать рабочий день.
-  WorkDayCommandResult startWorkDay(DateTime now) {
-    now = _syncWithClock(now);
+  WorkDayCommandResult startWorkDay(DateTime now) =>
+      _commanded(now, _startWorkDay);
 
+  WorkDayCommandResult _startWorkDay(DateTime now) {
     if (_visiblePhase != WorkDayPhase.notStarted &&
         _visiblePhase != WorkDayPhase.finished) {
       return const WorkDayCommandRejected(
@@ -262,9 +287,9 @@ final class WorkDayEngine {
 
   /// Начать предложенный отдых: работа замирает, идёт таймер отдыха.
   /// Упражнения выбираются по кругу один раз — на момент начала отдыха.
-  WorkDayCommandResult startRest(DateTime now) {
-    now = _syncWithClock(now);
+  WorkDayCommandResult startRest(DateTime now) => _commanded(now, _startRest);
 
+  WorkDayCommandResult _startRest(DateTime now) {
     final rejection = _restCommandRejection;
     if (rejection != null) {
       return WorkDayCommandRejected(rejection);
@@ -277,9 +302,9 @@ final class WorkDayEngine {
   /// Начать обед вручную в любой момент идущего рабочего дня, даже раньше
   /// назначенного времени. Ручной обед считается состоявшимся: повторно в
   /// этом рабочем дне он не предлагается и не начинается.
-  WorkDayCommandResult startMeal(DateTime now) {
-    now = _syncWithClock(now);
+  WorkDayCommandResult startMeal(DateTime now) => _commanded(now, _startMeal);
 
+  WorkDayCommandResult _startMeal(DateTime now) {
     final rejection = switch (_phase) {
       WorkDayPhase.notStarted => RejectionReason.workDayNotStarted,
       WorkDayPhase.finished => RejectionReason.workDayAlreadyFinished,
@@ -319,15 +344,19 @@ final class WorkDayEngine {
       _nextMealAt = null;
     }
     _events.add(
-      WorkDayEvent.restStarted(now, kind, plannedDuration: _restPlannedDuration),
+      WorkDayEvent.restStarted(
+        now,
+        kind,
+        plannedDuration: _restPlannedDuration,
+      ),
     );
   }
 
   /// Завершить идущий отдых досрочно: новый интервал работы начинается с этого
   /// момента, и ритм продолжается от него.
-  WorkDayCommandResult finishRest(DateTime now) {
-    now = _syncWithClock(now);
+  WorkDayCommandResult finishRest(DateTime now) => _commanded(now, _finishRest);
 
+  WorkDayCommandResult _finishRest(DateTime now) {
     if (_phase != WorkDayPhase.resting) {
       return const WorkDayCommandRejected(RejectionReason.restNotInProgress);
     }
@@ -344,9 +373,9 @@ final class WorkDayEngine {
   /// через интервал длинного отдыха от плановой точки пропущенного, а если
   /// пропуск случился позже этого срока — от момента пропуска. Так пропуск не
   /// создаёт ни долга, ни немедленного повторного предложения.
-  WorkDayCommandResult skipRest(DateTime now) {
-    now = _syncWithClock(now);
+  WorkDayCommandResult skipRest(DateTime now) => _commanded(now, _skipRest);
 
+  WorkDayCommandResult _skipRest(DateTime now) {
     final rejection = _restCommandRejection;
     if (rejection != null) {
       return WorkDayCommandRejected(rejection);
@@ -399,9 +428,10 @@ final class WorkDayEngine {
   /// Отложить предложенный отдых: предложение вернётся через
   /// [postponeDuration], а время работы продолжит идти. Допускается не больше
   /// [maxPostponements] отложений подряд.
-  WorkDayCommandResult postponeRest(DateTime now) {
-    now = _syncWithClock(now);
+  WorkDayCommandResult postponeRest(DateTime now) =>
+      _commanded(now, _postponeRest);
 
+  WorkDayCommandResult _postponeRest(DateTime now) {
     final rejection = _restCommandRejection;
     if (rejection != null) {
       return WorkDayCommandRejected(rejection);
@@ -441,9 +471,9 @@ final class WorkDayEngine {
 
   /// Поставить рабочий день на паузу: счёт рабочего времени замирает.
   /// Предложенный отдых на паузе ждёт возобновления.
-  WorkDayCommandResult pause(DateTime now) {
-    now = _syncWithClock(now);
+  WorkDayCommandResult pause(DateTime now) => _commanded(now, _pause);
 
+  WorkDayCommandResult _pause(DateTime now) {
     final rejection = switch (_visiblePhase) {
       WorkDayPhase.notStarted => RejectionReason.workDayNotStarted,
       WorkDayPhase.finished => RejectionReason.workDayAlreadyFinished,
@@ -465,9 +495,9 @@ final class WorkDayEngine {
 
   /// Продолжить рабочий день после паузы: счёт идёт с того же места, а
   /// следующий отдых сдвигается на длительность паузы.
-  WorkDayCommandResult resume(DateTime now) {
-    now = _syncWithClock(now);
+  WorkDayCommandResult resume(DateTime now) => _commanded(now, _resume);
 
+  WorkDayCommandResult _resume(DateTime now) {
     final rejection = switch (_phase) {
       WorkDayPhase.notStarted => RejectionReason.workDayNotStarted,
       WorkDayPhase.finished => RejectionReason.workDayAlreadyFinished,
@@ -496,9 +526,10 @@ final class WorkDayEngine {
   }
 
   /// Завершить рабочий день вручную. Идущий отдых при этом прерывается.
-  WorkDayCommandResult finishWorkDay(DateTime now) {
-    now = _syncWithClock(now);
+  WorkDayCommandResult finishWorkDay(DateTime now) =>
+      _commanded(now, _finishWorkDay);
 
+  WorkDayCommandResult _finishWorkDay(DateTime now) {
     final rejection = switch (_phase) {
       WorkDayPhase.notStarted => RejectionReason.workDayNotStarted,
       WorkDayPhase.finished => RejectionReason.workDayAlreadyFinished,
@@ -542,9 +573,10 @@ final class WorkDayEngine {
   /// меняются. Принятые настройки сразу влияют на расчёт следующего отдыха и
   /// пересчитывают конец рабочего окна текущего дня, но не прерывают идущий
   /// отдых, не отменяют показанное предложение и не завершают рабочий день.
-  WorkDayCommandResult updateSettings(DateTime now, RhythmSettings candidate) {
-    now = _syncWithClock(now);
+  WorkDayCommandResult updateSettings(DateTime now, RhythmSettings candidate) =>
+      _commanded(now, (at) => _updateSettings(at, candidate));
 
+  WorkDayCommandResult _updateSettings(DateTime now, RhythmSettings candidate) {
     final violation = settingsViolation(candidate);
     if (violation != null) {
       return WorkDayCommandRejected(violation);
@@ -559,7 +591,7 @@ final class WorkDayEngine {
 
   /// Вернуть все настройки к значениям по умолчанию.
   WorkDayCommandResult resetSettings(DateTime now) =>
-      updateSettings(now, RhythmSettings.defaults);
+      _commanded(now, (at) => _updateSettings(at, RhythmSettings.defaults));
 
   /// Перенести действующие настройки на уже запланированный ритм.
   ///
@@ -608,7 +640,7 @@ final class WorkDayEngine {
   WorkDaySnapshot snapshot(DateTime now) {
     now = _syncWithClock(now);
 
-    return WorkDaySnapshot(
+    final snapshot = WorkDaySnapshot(
       phase: _visiblePhase,
       availableCommands: _availableCommands(now),
       settings: _settings,
@@ -628,6 +660,210 @@ final class WorkDayEngine {
       lastRestFinished: _lastRestFinished,
       events: _events,
     );
+
+    _pushReminderPlan();
+    return snapshot;
+  }
+
+  /// Выполнить команду и обновить напоминания. Время догоняется до [now] до
+  /// команды, поэтому и отказ может изменить состояние — раскладка напоминаний
+  /// обновляется при любом исходе команды.
+  WorkDayCommandResult _commanded(
+    DateTime now,
+    WorkDayCommandResult Function(DateTime at) command,
+  ) {
+    final result = command(_syncWithClock(now));
+    _pushReminderPlan();
+    return result;
+  }
+
+  /// Дождаться, пока порт получит последнюю раскладку напоминаний. Нужно
+  /// оболочке перед выходом и тестам, чтобы проверять раскладку без гонок.
+  Future<void> get remindPlanApplied => _reminderWrites;
+
+  /// Последняя раскладка, переданная в порт: повторная передача того же
+  /// списка не делается, иначе тик экрана переписывал бы уведомления каждую
+  /// секунду.
+  List<RestReminder> _pushedReminders = const <RestReminder>[];
+
+  /// Раскладки уходят в порт строго по очереди: поздняя не обгоняет раннюю.
+  Future<void> _reminderWrites = Future<void>.value();
+
+  void _pushReminderPlan() {
+    final port = _reminders;
+    if (port == null) {
+      return;
+    }
+    final plan = _reminderPlan();
+    if (_sameReminders(plan, _pushedReminders)) {
+      return;
+    }
+    _reminderWrites = _reminderWrites
+        .then((_) async {
+          await port.cancelAll();
+          for (final reminder in plan) {
+            await port.schedule(reminder);
+          }
+          // Раскладка считается переданной только после успешной записи:
+          // иначе сбой платформы навсегда скрыл бы повторную попытку.
+          _pushedReminders = plan;
+          lastReminderFailure = null;
+        })
+        .catchError((Object error) {
+          // Сбой платформенных напоминаний не должен ломать ритм: следующая
+          // смена состояния повторит раскладку.
+          lastReminderFailure = error;
+        });
+  }
+
+  /// Последняя ошибка передачи раскладки в порт; null — раскладка применилась.
+  /// Нужна тестам и диагностике: сам ритм от напоминаний не зависит.
+  Object? lastReminderFailure;
+
+  bool _sameReminders(List<RestReminder> left, List<RestReminder> right) {
+    if (left.length != right.length) {
+      return false;
+    }
+    for (var index = 0; index < left.length; index++) {
+      if (left[index] != right[index]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Напоминания на ближайшие точки отдыха: не больше [reminderLimit] штук и
+  /// только внутри рабочего окна. Пустой список означает «отменить всё» —
+  /// так ядро отвечает на паузу, конец рабочего дня, выключенные напоминания
+  /// и уже показанное или идущее предложение.
+  ///
+  /// Точки считаются вперёд по тем же правилам, что и настоящий ритм: каждый
+  /// отдых сдвигает счётчик своего вида на свою длительность плюс интервал,
+  /// короткий отдых переносит и счётчик длинного, обед сбрасывает оба.
+  List<RestReminder> _reminderPlan() {
+    if (!_settings.notificationsEnabled) {
+      return const <RestReminder>[];
+    }
+    final endsAt = _workWindowEndsAt;
+    final counters = _reminderCounters;
+    if (endsAt == null || counters == null) {
+      return const <RestReminder>[];
+    }
+
+    var shortAt = counters.shortAt;
+    var longAt = counters.longAt;
+    var mealAt = counters.mealAt;
+    final reminders = <RestReminder>[];
+    while (reminders.length < reminderLimit) {
+      final candidates =
+          <(DateTime, RestKind)>[
+            if (shortAt != null) (shortAt, RestKind.short),
+            if (longAt != null) (longAt, RestKind.long),
+            if (mealAt != null) (mealAt, RestKind.meal),
+          ].where((candidate) {
+            final at = candidate.$1;
+            return at.isAfter(counters.from) && at.isBefore(endsAt);
+          }).toList();
+      if (candidates.isEmpty) {
+        break;
+      }
+      candidates.sort((a, b) {
+        final byMoment = a.$1.compareTo(b.$1);
+        return byMoment != 0
+            ? byMoment
+            : _offerPriority(a.$2).compareTo(_offerPriority(b.$2));
+      });
+
+      final (at, kind) = candidates.first;
+      final duration = _restDurationFor(kind);
+      reminders.add(
+        RestReminder(
+          at: at,
+          kind: kind,
+          duration: duration,
+          playSound: _settings.soundEnabled,
+        ),
+      );
+      switch (kind) {
+        case RestKind.meal:
+          shortAt = at.add(duration).add(_settings.shortRestInterval);
+          longAt = at.add(duration).add(_settings.longRestInterval);
+          mealAt = null;
+        case RestKind.long:
+          shortAt = at.add(duration).add(_settings.shortRestInterval);
+          longAt = at.add(duration).add(_settings.longRestInterval);
+        case RestKind.short:
+          shortAt = at.add(duration).add(_settings.shortRestInterval);
+          longAt = longAt?.add(duration);
+      }
+    }
+    return List<RestReminder>.unmodifiable(reminders);
+  }
+
+  /// Счётчики, от которых начинается проекция напоминаний, и момент, раньше
+  /// которого точек отдыха уже нет. Null — напоминать сейчас не о чем: день не
+  /// идёт, стоит на паузе, завершён или отдых уже предлагается.
+  ({DateTime from, DateTime? shortAt, DateTime? longAt, DateTime? mealAt})?
+  get _reminderCounters {
+    switch (_visiblePhase) {
+      case WorkDayPhase.notStarted:
+      case WorkDayPhase.finished:
+      case WorkDayPhase.paused:
+      case WorkDayPhase.restOffered:
+        return null;
+      case WorkDayPhase.running:
+        final from = _lastObservedAt;
+        if (from == null) {
+          return null;
+        }
+        // Отложенное предложение вернётся в свой момент, а счётчик его вида
+        // ещё показывает старую точку — берём момент возврата.
+        final postponedAt = _postponesUsed > 0 ? _nextRestAt : null;
+        return (
+          from: from,
+          shortAt: _offerKind == RestKind.short && postponedAt != null
+              ? postponedAt
+              : _nextShortRestAt,
+          longAt: _offerKind == RestKind.long && postponedAt != null
+              ? postponedAt
+              : _nextLongRestAt,
+          mealAt: _offerKind == RestKind.meal && postponedAt != null
+              ? postponedAt
+              : _mealCandidateAt,
+        );
+      case WorkDayPhase.resting:
+        final endsAt = _restEndsAt;
+        final kind = _currentRestKind;
+        final windowEndsAt = _workWindowEndsAt;
+        if (endsAt == null || kind == null || windowEndsAt == null) {
+          return null;
+        }
+        if (!endsAt.isBefore(windowEndsAt)) {
+          return null;
+        }
+        // Отдых доигрывает до планового конца: от него и продолжается ритм.
+        final planned = _restPlannedDuration ?? Duration.zero;
+        return switch (kind) {
+          RestKind.meal => (
+            from: endsAt,
+            shortAt: endsAt.add(_settings.shortRestInterval),
+            longAt: endsAt.add(_settings.longRestInterval),
+            mealAt: null,
+          ),
+          RestKind.long => (
+            from: endsAt,
+            shortAt: endsAt.add(_settings.shortRestInterval),
+            longAt: endsAt.add(_settings.longRestInterval),
+            mealAt: _mealCandidateAt,
+          ),
+          RestKind.short => (
+            from: endsAt,
+            shortAt: endsAt.add(_settings.shortRestInterval),
+            longAt: _nextLongRestAt?.add(planned),
+            mealAt: _mealCandidateAt,
+          ),
+        };
+    }
   }
 
   /// Фаза, которую видит оболочка: предложенный отдых — это идущий рабочий
@@ -657,7 +893,9 @@ final class WorkDayEngine {
   /// считает текущим: не раньше последнего увиденного.
   DateTime _syncWithClock(DateTime now) {
     final observed = _lastObservedAt;
-    final effective = observed != null && now.isBefore(observed) ? observed : now;
+    final effective = observed != null && now.isBefore(observed)
+        ? observed
+        : now;
 
     final closedSince = _closedSince;
     _closedSince = null;

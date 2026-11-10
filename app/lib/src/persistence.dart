@@ -32,12 +32,18 @@ final class WorkDaySession {
 
   /// Восстановить сессию из хранилища. Повреждённый или чужий по версии
   /// документ не применяется и не перезаписывается.
-  static Future<WorkDaySession> restore(LocalDocumentStore store) async {
+  ///
+  /// [reminders] — порт напоминаний: ядро перепланирует их при каждой смене
+  /// состояния, в том числе сразу после восстановления.
+  static Future<WorkDaySession> restore(
+    LocalDocumentStore store, {
+    RestReminderPort? reminders,
+  }) async {
     final payload = await store.read();
     if (payload == null) {
       return WorkDaySession._(
         store,
-        WorkDayEngine(),
+        WorkDayEngine(reminders: reminders),
         persistenceBlocked: false,
       );
     }
@@ -45,11 +51,15 @@ final class WorkDaySession {
       final document = PersistedDocument.fromJsonString(payload);
       return WorkDaySession._(
         store,
-        WorkDayEngine.restore(document),
+        WorkDayEngine.restore(document, reminders: reminders),
         persistenceBlocked: false,
       );
     } on DocumentFormatException {
-      return WorkDaySession._(store, WorkDayEngine(), persistenceBlocked: true);
+      return WorkDaySession._(
+        store,
+        WorkDayEngine(reminders: reminders),
+        persistenceBlocked: true,
+      );
     }
   }
 

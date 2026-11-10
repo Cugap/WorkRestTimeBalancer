@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 import 'package:work_rest_time_balancer/main.dart';
+import 'package:work_rest_time_balancer/src/notifications/reminder_status.dart';
 import 'package:work_rest_time_balancer/src/settings_screen.dart';
 
 import 'fake_clock.dart';
@@ -160,4 +161,84 @@ void main() {
     expect(snapshot.remainingRest, const Duration(minutes: 3));
     expect(snapshot.settings.shortRestDuration, const Duration(minutes: 5));
   });
+
+  testWidgets('переключатели напоминаний действуют сразу', (tester) async {
+    final reminders = RecordingReminders();
+    engine = WorkDayEngine(reminders: reminders);
+    engine.startWorkDay(clock.now());
+    await engine.remindPlanApplied;
+    expect(reminders.planned, isNotEmpty);
+
+    await pumpApp(tester);
+    await openSettings(tester);
+
+    await tap(tester, key('settings-notifications'));
+    expect(settings().notificationsEnabled, isFalse);
+    await engine.remindPlanApplied;
+    expect(reminders.planned, isEmpty);
+
+    await tap(tester, key('settings-notifications'));
+    expect(settings().notificationsEnabled, isTrue);
+    await engine.remindPlanApplied;
+    expect(reminders.planned, isNotEmpty);
+
+    await tap(tester, key('settings-sound'));
+    expect(settings().soundEnabled, isFalse);
+    await engine.remindPlanApplied;
+    expect(reminders.planned.every((r) => !r.playSound), isTrue);
+  });
+
+  testWidgets('без точных будильников настройки честно говорят об этом', (
+    tester,
+  ) async {
+    final status = FakeReminderStatus(
+      const ReminderStatus(exactAlarms: false, notificationsAllowed: true),
+    );
+    await tester.pumpWidget(
+      WorkRestApp(engine: engine, clock: clock, reminderStatus: status),
+    );
+    await openSettings(tester);
+
+    expect(key('settings-exact-alarms'), findsOneWidget);
+    expect(find.textContaining('неточные'), findsOneWidget);
+
+    await tap(tester, key('settings-request-exact-alarms'));
+
+    expect(status.exactAlarmRequests, 1);
+    expect(key('settings-request-exact-alarms'), findsNothing);
+    expect(find.textContaining('точные'), findsOneWidget);
+  });
+}
+
+/// Порт напоминаний, который запоминает последнюю раскладку.
+final class RecordingReminders implements RestReminderPort {
+  final List<RestReminder> planned = <RestReminder>[];
+
+  @override
+  Future<void> cancelAll() async => planned.clear();
+
+  @override
+  Future<void> schedule(RestReminder reminder) async => planned.add(reminder);
+}
+
+/// Разрешения напоминаний, которыми управляет тест: сначала точных будильников
+/// нет, после запроса они выдаются.
+final class FakeReminderStatus implements ReminderStatusSource {
+  FakeReminderStatus(this._status);
+
+  ReminderStatus _status;
+  int exactAlarmRequests = 0;
+
+  @override
+  Future<ReminderStatus> read() async => _status;
+
+  @override
+  Future<ReminderStatus> requestExactAlarms() async {
+    exactAlarmRequests++;
+    _status = const ReminderStatus(
+      exactAlarms: true,
+      notificationsAllowed: true,
+    );
+    return _status;
+  }
 }
