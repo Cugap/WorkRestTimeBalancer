@@ -79,6 +79,35 @@ void main() {
       expect(restored, source);
     });
 
+    test('настройки трея и автозапуска переживают запись и чтение', () {
+      final source = PersistedDocument(
+        settings: RhythmSettings.defaults.copyWith(
+          minimizeToTray: false,
+          launchAtStartup: true,
+        ),
+        journal: const [],
+        day: null,
+      );
+
+      final restored = PersistedDocument.fromJsonString(source.toJsonString());
+
+      expect(restored.settings.minimizeToTray, isFalse);
+      expect(restored.settings.launchAtStartup, isTrue);
+    });
+
+    test('документ без настроек трея читается со значениями по умолчанию', () {
+      final json = _sampleDocument().toJson();
+      final settings = json['settings']! as Map<String, Object?>;
+      settings
+        ..remove('minimizeToTray')
+        ..remove('launchAtStartup');
+
+      final restored = PersistedDocument.fromJsonString(jsonEncode(json));
+
+      expect(restored.settings.minimizeToTray, isTrue);
+      expect(restored.settings.launchAtStartup, isFalse);
+    });
+
     test('состояние дня переживает запись и чтение без потерь', () {
       final source = _sampleDocument();
       expect(source.day, isNotNull);

@@ -14,6 +14,8 @@ RhythmSettings _changed({
   Duration mealDuration = const Duration(minutes: 60),
   bool notificationsEnabled = true,
   bool soundEnabled = true,
+  bool minimizeToTray = true,
+  bool launchAtStartup = false,
 }) => RhythmSettings(
   workStart: workStart,
   workEnd: workEnd,
@@ -25,6 +27,8 @@ RhythmSettings _changed({
   mealDuration: mealDuration,
   notificationsEnabled: notificationsEnabled,
   soundEnabled: soundEnabled,
+  minimizeToTray: minimizeToTray,
+  launchAtStartup: launchAtStartup,
 );
 
 void main() {
@@ -43,6 +47,13 @@ void main() {
       expect(settings.mealDuration, const Duration(minutes: 60));
       expect(settings.notificationsEnabled, isTrue);
       expect(settings.soundEnabled, isTrue);
+    });
+
+    test('по умолчанию окно сворачивается в трей, автозапуск выключен', () {
+      const settings = RhythmSettings.defaults;
+
+      expect(settings.minimizeToTray, isTrue);
+      expect(settings.launchAtStartup, isFalse);
     });
 
     test('по умолчанию действует ритм 25/3, 90/10 и обед в 13:00', () {
@@ -334,6 +345,26 @@ void main() {
   });
 
   group('сброс и журнал', () {
+    test('изменение ритма сохраняет настройки трея и автозапуска', () {
+      final engine = WorkDayEngine();
+      engine.updateSettings(
+        _at(8),
+        _changed(minimizeToTray: false, launchAtStartup: true),
+      );
+
+      engine.updateSettings(
+        _at(8, 1),
+        engine.snapshot(_at(8, 1)).settings.copyWith(
+          shortRestInterval: const Duration(minutes: 20),
+        ),
+      );
+
+      final settings = engine.snapshot(_at(8, 1)).settings;
+      expect(settings.minimizeToTray, isFalse);
+      expect(settings.launchAtStartup, isTrue);
+      expect(settings.shortRestInterval, const Duration(minutes: 20));
+    });
+
     test('сброс возвращает значения по умолчанию и прежний ритм', () {
       final engine = WorkDayEngine()..startWorkDay(_at(9));
       engine.updateSettings(
