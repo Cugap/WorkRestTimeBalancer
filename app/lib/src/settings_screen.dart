@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 
 import 'clock.dart';
+import 'desktop/desktop_shell.dart';
 import 'labels.dart';
 import 'notifications/reminder_status.dart';
 
@@ -35,6 +36,7 @@ class SettingsScreen extends StatefulWidget {
     required this.transfer,
     this.onStateChanged,
     this.reminderStatus,
+    this.desktop,
   });
 
   final WorkDayEngine engine;
@@ -52,6 +54,10 @@ class SettingsScreen extends StatefulWidget {
   /// переключатели остаются, а строки о разрешениях нет.
   final ReminderStatusSource? reminderStatus;
 
+  /// Возможности Windows: трей и автозапуск. Null или не Windows — строк про
+  /// трей нет: на других платформах таких настроек не существует.
+  final DesktopPreferences? desktop;
+
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
@@ -66,6 +72,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _transferError;
   bool _notificationsEnabled = true;
   bool _soundEnabled = true;
+  bool _minimizeToTray = true;
+  bool _launchAtStartup = false;
+  String? _desktopError;
   ReminderStatus? _reminderStatus;
 
   @override
@@ -75,6 +84,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _fill(settings);
     _notificationsEnabled = settings.notificationsEnabled;
     _soundEnabled = settings.soundEnabled;
+    _minimizeToTray = settings.minimizeToTray;
+    _launchAtStartup = settings.launchAtStartup;
     unawaited(_refreshReminderStatus());
   }
 
@@ -267,6 +278,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// Трей и автозапуск: настройка живёт в ядре, а оболочка применяет её сразу.
+  /// Если система не дала применить (например, автозапуск запрещён политикой),
+  /// экран говорит об этом честно, а настройка остаётся прежней.
+  Future<void> _setMinimizeToTray(bool value) async {
+    final applied = await widget.desktop!.setCloseToTray(value);
+    if (!mounted) {
+      return;
+    }
+    if (!applied) {
+      setState(() => _desktopError = 'Не удалось изменить поведение окна');
+      return;
+    }
+    setState(() => _desktopError = null);
+    _applyImmediately(
+      (settings) => settings.copyWith(minimizeToTray: value),
+      () => _minimizeToTray = value,
+    );
+  }
+
+  Future<void> _setLaunchAtStartup(bool value) async {
+    final applied = await widget.desktop!.setLaunchAtStartup(value);
+    if (!mounted) {
+      return;
+    }
+    if (!applied) {
+      setState(
+        () => _desktopError = value
+            ? 'Система не разрешила автозапуск'
+            : 'Система не разрешила отключить автозапуск',
+      );
+      return;
+    }
+    setState(() => _desktopError = null);
+    _applyImmediately(
+      (settings) => settings.copyWith(launchAtStartup: value),
+      () => _launchAtStartup = value,
+    );
+  }
+
   void _applyImmediately(
     RhythmSettings Function(RhythmSettings current) change,
     void Function() applyLocal,
@@ -454,6 +504,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onChanged: _setSoundEnabled,
                 ),
                 ..._reminderStatusChildren(theme),
+                if (widget.desktop?.isSupported ?? false) ...[
+                  const Divider(),
+                  SwitchListTile(
+                    key: const ValueKey('settings-minimize-to-tray'),
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Сворачивать в трей'),
+                    subtitle: const Text(
+                      'Закрытие окна прячет приложение в трей: ритм и '
+                      'напоминания продолжаются',
+                    ),
+                    value: _minimizeToTray,
+                    onChanged: _setMinimizeToTray,
+                  ),
+                  SwitchListTile(
+                    key: const ValueKey('settings-launch-at-startup'),
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Запускать вместе с системой'),
+                    subtitle: const Text(
+                      'Приложение стартует автоматически при входе в Windows',
+                    ),
+                    value: _launchAtStartup,
+                    onChanged: _setLaunchAtStartup,
+                  ),
+                  if (_desktopError != null)
+                    Text(
+                      _desktopError!,
+                      key: const ValueKey('settings-desktop-error'),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
+                    ),
+                ],
                 const SizedBox(height: 16),
                 for (final field in _Field.values) ...[
                   TextField(

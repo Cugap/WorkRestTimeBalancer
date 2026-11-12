@@ -1,10 +1,11 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 
 import 'clock.dart';
 import 'labels.dart';
+import 'desktop/desktop_shell.dart';
 import 'notifications/reminder_status.dart';
 import 'rest_screen.dart';
 import 'settings_screen.dart';
@@ -18,6 +19,7 @@ class WorkDayScreen extends StatefulWidget {
     required this.transfer,
     this.onStateChanged,
     this.reminderStatus,
+    this.desktop,
   });
 
   final WorkDayEngine engine;
@@ -33,6 +35,9 @@ class WorkDayScreen extends StatefulWidget {
   /// Источник состояния разрешений напоминаний: экран настроек показывает его
   /// как есть. Null — платформа без напоминаний.
   final ReminderStatusSource? reminderStatus;
+
+  /// Возможности Windows: трей и автозапуск. Null — платформа без них.
+  final DesktopPreferences? desktop;
 
   @override
   State<WorkDayScreen> createState() => _WorkDayScreenState();
@@ -121,6 +126,7 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
           transfer: widget.transfer,
           onStateChanged: widget.onStateChanged,
           reminderStatus: widget.reminderStatus,
+          desktop: widget.desktop,
         ),
       ),
     );

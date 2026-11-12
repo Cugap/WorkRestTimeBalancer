@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 
 import 'src/clock.dart';
+import 'src/desktop/desktop_shell.dart';
 import 'src/file_picker_document_gateway.dart';
 import 'src/notifications/reminder_status.dart';
 import 'src/notifications/rest_notifications.dart';
@@ -23,11 +24,16 @@ Future<void> main() async {
     SharedPreferencesDocumentStore(),
     reminders: notifications,
   );
+  final clock = MonotonicClock();
+  // Трей на Windows: окно можно свернуть, а ритм и напоминания продолжатся.
+  final desktop = DesktopShell(engine: session.engine, clock: clock);
+  await desktop.start();
   runApp(
     WorkRestApp(
       session: session,
-      clock: MonotonicClock(),
+      clock: clock,
       notifications: notifications,
+      desktop: desktop,
     ),
   );
 }
@@ -41,6 +47,8 @@ class WorkRestApp extends StatefulWidget {
     this.fileGateway,
     this.notifications,
     this.reminderStatus,
+    this.desktop,
+    this.desktopPreferences,
   }) : session = session ?? WorkDaySession.inMemory(engine);
 
   final WorkDaySession session;
@@ -56,6 +64,14 @@ class WorkRestApp extends StatefulWidget {
   /// Состояние разрешений напоминаний для экрана настроек; по умолчанию — сам
   /// адаптер напоминаний.
   final ReminderStatusSource? reminderStatus;
+
+  /// Трей и автозапуск на Windows; null — платформа без них (тесты, Android,
+  /// iOS).
+  final DesktopShell? desktop;
+
+  /// Возможности Windows для экрана настроек; по умолчанию — сам трей. Тесты
+  /// подменяют их фейком, не поднимая ни трей, ни реестр.
+  final DesktopPreferences? desktopPreferences;
 
   @override
   State<WorkRestApp> createState() => _WorkRestAppState();
@@ -90,12 +106,14 @@ class _WorkRestAppState extends State<WorkRestApp> {
       notifications.onOpenRequested = _openRestScreen;
       WidgetsBinding.instance.addPostFrameCallback((_) => _askPermissions());
     }
+    widget.desktop?.onOpenRequested = _openRestScreen;
   }
 
   @override
   void dispose() {
     _lifecycle.dispose();
     widget.notifications?.onOpenRequested = null;
+    widget.desktop?.onOpenRequested = null;
     super.dispose();
   }
 
@@ -163,6 +181,7 @@ class _WorkRestAppState extends State<WorkRestApp> {
         transfer: _transfer,
         onStateChanged: _save,
         reminderStatus: widget.reminderStatus ?? widget.notifications,
+        desktop: widget.desktopPreferences ?? widget.desktop,
       ),
     );
   }

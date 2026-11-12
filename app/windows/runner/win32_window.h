@@ -52,6 +52,10 @@ class Win32Window {
   // If true, closing this window will quit the application.
   void SetQuitOnClose(bool quit_on_close);
 
+  // Если true, закрытие окна прячет его вместо завершения приложения: ритм и
+  // напоминания продолжаются, а окно возвращается из трея.
+  void SetCloseToTray(bool close_to_tray);
+
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
@@ -91,6 +95,9 @@ class Win32Window {
   static void UpdateTheme(HWND const window);
 
   bool quit_on_close_ = false;
+
+  // Прятать окно вместо закрытия (настройка «сворачивать в трей»).
+  bool close_to_tray_ = false;
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;

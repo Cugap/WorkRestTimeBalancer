@@ -179,6 +179,14 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_CLOSE:
+      // Настройка трея: окно прячется, а приложение продолжает вести ритм.
+      if (close_to_tray_) {
+        ShowWindow(hwnd, SW_HIDE);
+        return 0;
+      }
+      break;
+
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
@@ -261,6 +269,10 @@ HWND Win32Window::GetHandle() {
 
 void Win32Window::SetQuitOnClose(bool quit_on_close) {
   quit_on_close_ = quit_on_close;
+}
+
+void Win32Window::SetCloseToTray(bool close_to_tray) {
+  close_to_tray_ = close_to_tray;
 }
 
 bool Win32Window::OnCreate() {

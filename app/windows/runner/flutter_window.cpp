@@ -27,6 +27,28 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
+  desktop_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "work_rest/desktop",
+          &flutter::StandardMethodCodec::GetInstance());
+  desktop_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() == "setCloseToTray") {
+          const auto* value = std::get_if<bool>(call.arguments());
+          SetCloseToTray(value != nullptr && *value);
+          result->Success();
+          return;
+        }
+        if (call.method_name() == "exit") {
+          Destroy();
+          result->Success();
+          return;
+        }
+        result->NotImplemented();
+      });
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });

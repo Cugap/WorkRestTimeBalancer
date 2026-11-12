@@ -12,6 +12,9 @@ const String _windowClass = 'FLUTTER_RUNNER_WIN32_WINDOW';
 /// `SW_RESTORE`: развернуть свёрнутое окно, не меняя его размеров.
 const int _swRestore = 9;
 
+/// `SW_HIDE`: спрятать окно, оставив приложение работать.
+const int _swHide = 0;
+
 typedef _EnumWindowsNative = Int32 Function(
   Pointer<NativeFunction<Int32 Function(IntPtr, IntPtr)>> callback,
   IntPtr extra,
@@ -72,6 +75,27 @@ void activateAppWindow() {
         .call(window);
   } catch (error) {
     debugPrint('rest reminders: cannot raise window: $error');
+  }
+}
+
+/// Спрятать окно приложения в трей: процесс продолжает жить, ритм и
+/// напоминания работают. Окно вернёт [activateAppWindow].
+void hideAppWindow() {
+  if (!Platform.isWindows) {
+    return;
+  }
+  try {
+    final user32 = DynamicLibrary.open('user32.dll');
+    final kernel32 = DynamicLibrary.open('kernel32.dll');
+    final window = _findOwnWindow(user32, kernel32);
+    if (window == 0) {
+      return;
+    }
+    user32
+        .lookupFunction<_ShowWindowNative, _ShowWindowDart>('ShowWindow')
+        .call(window, _swHide);
+  } catch (error) {
+    debugPrint('desktop: cannot hide window: $error');
   }
 }
 
