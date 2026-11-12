@@ -21,6 +21,8 @@ final class RhythmSettings {
     this.mealDuration = const Duration(minutes: 60),
     this.notificationsEnabled = true,
     this.soundEnabled = true,
+    this.minimizeToTray = true,
+    this.launchAtStartup = false,
   });
 
   /// Значения по умолчанию из спецификации: 09:00–18:00, короткий отдых
@@ -83,6 +85,14 @@ final class RhythmSettings {
   /// Звук напоминаний включён. Ядро хранит только флаг.
   final bool soundEnabled;
 
+  /// Окно сворачивается в системный трей вместо закрытия. Ядро хранит только
+  /// пользовательскую настройку: поведением окна управляет оболочка Windows.
+  final bool minimizeToTray;
+
+  /// Приложение запускается вместе с системой. Ядро хранит только настройку;
+  /// запись в системе делает оболочка Windows.
+  final bool launchAtStartup;
+
   /// Рабочее окно для расчёта ритма; null, если начало не раньше конца.
   /// Движок хранит только допустимые настройки, поэтому у него окно всегда есть.
   WorkWindow? get workWindow => workStart.compareTo(workEnd) < 0
@@ -100,6 +110,8 @@ final class RhythmSettings {
     Duration? mealDuration,
     bool? notificationsEnabled,
     bool? soundEnabled,
+    bool? minimizeToTray,
+    bool? launchAtStartup,
   }) => RhythmSettings(
     workStart: workStart ?? this.workStart,
     workEnd: workEnd ?? this.workEnd,
@@ -111,6 +123,8 @@ final class RhythmSettings {
     mealDuration: mealDuration ?? this.mealDuration,
     notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
     soundEnabled: soundEnabled ?? this.soundEnabled,
+    minimizeToTray: minimizeToTray ?? this.minimizeToTray,
+    launchAtStartup: launchAtStartup ?? this.launchAtStartup,
   );
 
   @override
@@ -125,7 +139,9 @@ final class RhythmSettings {
       other.mealStart == mealStart &&
       other.mealDuration == mealDuration &&
       other.notificationsEnabled == notificationsEnabled &&
-      other.soundEnabled == soundEnabled;
+      other.soundEnabled == soundEnabled &&
+      other.minimizeToTray == minimizeToTray &&
+      other.launchAtStartup == launchAtStartup;
 
   @override
   int get hashCode => Object.hash(
@@ -139,6 +155,8 @@ final class RhythmSettings {
     mealDuration,
     notificationsEnabled,
     soundEnabled,
+    minimizeToTray,
+    launchAtStartup,
   );
 
   @override
@@ -147,5 +165,6 @@ final class RhythmSettings {
       'short $shortRestInterval/$shortRestDuration, '
       'long $longRestInterval/$longRestDuration, '
       'meal $mealStart/$mealDuration, '
-      'notifications $notificationsEnabled, sound $soundEnabled)';
+      'notifications $notificationsEnabled, sound $soundEnabled, '
+      'tray $minimizeToTray, autostart $launchAtStartup)';
 }

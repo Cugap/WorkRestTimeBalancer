@@ -362,6 +362,8 @@ Map<String, Object?> _settingsToJson(RhythmSettings settings) => {
   'mealDurationMs': settings.mealDuration.inMilliseconds,
   'notificationsEnabled': settings.notificationsEnabled,
   'soundEnabled': settings.soundEnabled,
+  'minimizeToTray': settings.minimizeToTray,
+  'launchAtStartup': settings.launchAtStartup,
 };
 
 RhythmSettings _settingsFromJson(Map<String, Object?> json) => RhythmSettings(
@@ -375,6 +377,12 @@ RhythmSettings _settingsFromJson(Map<String, Object?> json) => RhythmSettings(
   mealDuration: _duration(json, 'mealDurationMs'),
   notificationsEnabled: _bool(json, 'notificationsEnabled'),
   soundEnabled: _bool(json, 'soundEnabled'),
+  minimizeToTray:
+      _boolOrNull(json, 'minimizeToTray') ??
+      RhythmSettings.defaults.minimizeToTray,
+  launchAtStartup:
+      _boolOrNull(json, 'launchAtStartup') ??
+      RhythmSettings.defaults.launchAtStartup,
 );
 
 Map<String, Object?> _eventToJson(WorkDayEvent event) => {
