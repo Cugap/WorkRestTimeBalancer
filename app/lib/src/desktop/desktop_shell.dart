@@ -263,13 +263,6 @@ final class DesktopShell with TrayListener implements DesktopPreferences {
   @override
   void onTrayIconMouseDown() => _showWindow();
 
-  /// Закрытие окна системой: спрятать в трей или выйти по-настоящему.
-  /// Оболочка спрашивает это у Flutter перед завершением приложения.
-  bool get shouldHideOnClose => _closeToTray;
-
-  /// Спрятать окно в трей, оставив приложение работать.
-  void hideToTray() => hideAppWindow();
-
   /// Отпустить платформенные подписки.
   Future<void> dispose() async {
     if (!isSupported || !_started) {
