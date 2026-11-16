@@ -1,0 +1,61 @@
+name: iOS build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'app/**'
+      - 'core/**'
+      - '.github/workflows/ios-build.yml'
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Tests and iOS build on macOS
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build iOS without code signing
+        run: flutter build ios --release --no-codesign
+
+      # Неподписанный .ipa ставят на iPhone вручную: Sideloadly/AltStore
+      # подписывают его бесплатным Apple ID (см. docs/ios-build-and-test.md).
+      - name: Pack unsigned ipa
+        working-directory: app/build/ios/iphoneos
+        run: |
+          mkdir Payload
+          cp -R Runner.app Payload/
+          ditto -c -k --sequesterRsrc --keepParent Payload ../WorkRestTimeBalancer-unsigned.ipa
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-runner-unsigned
+          path: |
+            app/build/ios/iphoneos/Runner.app
+            app/build/ios/WorkRestTimeBalancer-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14

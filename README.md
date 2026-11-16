@@ -29,3 +29,6 @@ flutter run -d windows
 ```
 
 Сборка под Android требует Android SDK и JDK 17+, под iOS — macOS с Xcode, под Windows — Visual Studio с workload «Desktop development with C++».
+
+iOS без своего Mac: workflow **iOS build** в GitHub Actions собирает `.ipa` без подписи, а
+пошаговая инструкция и ручной чек-лист — в [docs/ios-build-and-test.md](./docs/ios-build-and-test.md).
