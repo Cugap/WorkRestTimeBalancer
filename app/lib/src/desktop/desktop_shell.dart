@@ -16,6 +16,7 @@ import 'package:win32_registry/win32_registry.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 
 import '../clock.dart';
+import '../labels.dart';
 import '../window_activation.dart';
 
 /// Автозапуск вместе с системой. Ядро хранит только настройку, а запись в
@@ -187,15 +188,18 @@ final class DesktopShell with TrayListener implements DesktopPreferences {
     final canFinish = snapshot.availableCommands.contains(
       WorkDayCommand.finish,
     );
+    // Текст берётся из общего набора подписей: одно место для всех кнопок.
+    final finishLabel = commandLabel(
+      WorkDayCommand.finish,
+      snapshot.phase,
+    );
     await trayManager.setContextMenu(
       Menu(
         items: [
           MenuItem(key: openItemKey, label: 'Открыть приложение'),
           MenuItem(
             key: finishItemKey,
-            label: canFinish
-                ? 'Завершить рабочий день'
-                : 'Завершить рабочий день (недоступно)',
+            label: canFinish ? finishLabel : '$finishLabel (недоступно)',
           ),
           MenuItem.separator(),
         ],

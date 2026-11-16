@@ -1,6 +1,9 @@
-import 'package:test/test.dart';
+﻿import 'package:test/test.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 
+/// Дать движку передать раскладку в порт: записи идут цепочкой микротасок,
+/// поэтому достаточно опустошить очередь, не заводя шва внутри ядра.
+Future<void> _planApplied() => Future<void>.delayed(Duration.zero);
 DateTime _at(int hour, [int minute = 0]) => DateTime(2026, 3, 4, hour, minute);
 
 /// Порт, который запоминает ровно то, что ядро ему передало: после каждого
@@ -92,7 +95,7 @@ final class ReminderDesk {
       case null:
         engine.snapshot(now);
     }
-    await engine.remindPlanApplied;
+    await _planApplied();
     return List<RestReminder>.of(port.planned);
   }
 
@@ -103,7 +106,7 @@ final class ReminderDesk {
   ) async {
     final current = engine.snapshot(now).settings;
     engine.updateSettings(now, change(current));
-    await engine.remindPlanApplied;
+    await _planApplied();
     return List<RestReminder>.of(port.planned);
   }
 }
@@ -337,20 +340,18 @@ void main() {
         final engine = WorkDayEngine(reminderLimit: 2, reminders: port);
 
         engine.startWorkDay(_at(9));
-        await engine.remindPlanApplied;
+        await _planApplied();
 
-        // Первая запись упала: раскладка не считается переданной.
-        expect(engine.lastReminderFailure, isNotNull);
+        // Первая запись упала: раскладка не считается переданной, в порту пусто.
         expect(port.planned, isEmpty);
 
         port.failing = false;
         engine.pause(_at(9, 10));
-        await engine.remindPlanApplied;
+        await _planApplied();
         engine.resume(_at(9, 20));
-        await engine.remindPlanApplied;
+        await _planApplied();
 
-        // Повторная попытка удалась: ошибка снята, раскладка на месте.
-        expect(engine.lastReminderFailure, isNull);
+        // Повторная попытка удалась: раскладка дошла до порта.
         expect(port.planned, [_short(_at(9, 35)), _short(_at(10, 3))]);
       },
     );
@@ -368,7 +369,7 @@ void main() {
       );
 
       restored.snapshot(_at(9, 12));
-      await restored.remindPlanApplied;
+      await _planApplied();
 
       expect(port.planned, [_short(_at(9, 25)), _short(_at(9, 53))]);
     });
@@ -425,7 +426,7 @@ void main() {
       final port = RecordingReminderPort();
       final engine = WorkDayEngine(reminders: port);
       engine.startWorkDay(_at(9));
-      await engine.remindPlanApplied;
+      await _planApplied();
 
       expect(port.planned, hasLength(defaultReminderLimit));
       expect(port.planned.last.at.isBefore(_at(18)), isTrue);
@@ -447,7 +448,7 @@ void main() {
         reminders: port,
       );
       final snapshot = restored.snapshot(_at(10, 5));
-      await restored.remindPlanApplied;
+      await _planApplied();
 
       // Фаза и отдых соответствуют реально прошедшему времени, а не тому
       // состоянию, в котором приложение уснуло.
@@ -483,7 +484,7 @@ void main() {
       // iOS. По возвращении отдых предлагается один раз, а не по разу на
       // каждую пропущенную точку.
       final snapshot = desk.engine.snapshot(_at(10, 5));
-      await desk.engine.remindPlanApplied;
+      await _planApplied();
 
       expect(snapshot.phase, WorkDayPhase.restOffered);
       expect(

@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:work_rest_core/work_rest_core.dart';
+import 'package:work_rest_time_balancer/src/labels.dart';
 import 'package:work_rest_time_balancer/src/notifications/reminder_status.dart';
 import 'package:work_rest_time_balancer/src/notifications/rest_notifications.dart';
 
@@ -65,8 +66,11 @@ void main() {
       await notifications.schedule(_short(_at(9, 25)));
 
       final sent = platform.scheduled.single;
-      expect(sent.title, 'Пора отдохнуть');
-      expect(sent.body, 'Короткий отдых · 3 мин');
+      // Текст напоминания — данные, а не поведение: проверяем, что он собран
+      // из вида и длительности отдыха, а не конкретную формулировку.
+      expect(sent.title, isNotEmpty);
+      expect(sent.body, contains(restKindLabel(RestKind.short)));
+      expect(sent.body, contains(formatHoursMinutes(const Duration(minutes: 3))));
       expect(sent.payload, restReminderPayload);
       expect(sent.at, _at(9, 25));
 

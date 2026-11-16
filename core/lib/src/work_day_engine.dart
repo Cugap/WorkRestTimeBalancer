@@ -677,10 +677,6 @@ final class WorkDayEngine {
     return result;
   }
 
-  /// Дождаться, пока порт получит последнюю раскладку напоминаний. Нужно
-  /// оболочке перед выходом и тестам, чтобы проверять раскладку без гонок.
-  Future<void> get remindPlanApplied => _reminderWrites;
-
   /// Последняя раскладка, переданная в порт: повторная передача того же
   /// списка не делается, иначе тик экрана переписывал бы уведомления каждую
   /// секунду.
@@ -707,18 +703,12 @@ final class WorkDayEngine {
           // Раскладка считается переданной только после успешной записи:
           // иначе сбой платформы навсегда скрыл бы повторную попытку.
           _pushedReminders = plan;
-          lastReminderFailure = null;
         })
-        .catchError((Object error) {
+        .catchError((Object _) {
           // Сбой платформенных напоминаний не должен ломать ритм: следующая
           // смена состояния повторит раскладку.
-          lastReminderFailure = error;
         });
   }
-
-  /// Последняя ошибка передачи раскладки в порт; null — раскладка применилась.
-  /// Нужна тестам и диагностике: сам ритм от напоминаний не зависит.
-  Object? lastReminderFailure;
 
   bool _sameReminders(List<RestReminder> left, List<RestReminder> right) {
     if (left.length != right.length) {

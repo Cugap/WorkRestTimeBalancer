@@ -156,7 +156,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     final now = widget.clock.now();
     final current = widget.engine.snapshot(now).settings;
-    final candidate = RhythmSettings(
+    // Формой правятся только ритм и окно, поэтому остальные настройки
+    // переносятся из действующих: иначе сохранение формы молча сбросило бы
+    // трей и автозапуск.
+    final candidate = current.copyWith(
       workStart: workStart,
       workEnd: workEnd,
       shortRestInterval: shortRestInterval,
@@ -165,8 +168,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       longRestDuration: longRestDuration,
       mealStart: mealStart,
       mealDuration: mealDuration,
-      notificationsEnabled: current.notificationsEnabled,
-      soundEnabled: current.soundEnabled,
     );
 
     setState(() {
@@ -185,10 +186,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _reset() {
+  Future<void> _reset() async {
     final now = widget.clock.now();
     switch (widget.engine.resetSettings(now)) {
       case WorkDayCommandAccepted():
+        // «По умолчанию» возвращает и настройки оболочки: трей включён,
+        // автозапуск выключен — приводим систему к тому же состоянию сразу.
+        final settings = widget.engine.snapshot(now).settings;
+        await widget.desktop?.setCloseToTray(settings.minimizeToTray);
+        await widget.desktop?.setLaunchAtStartup(settings.launchAtStartup);
+        if (!mounted) {
+          return;
+        }
         widget.onStateChanged?.call();
         Navigator.of(context).pop();
       case WorkDayCommandRejected(:final reason):

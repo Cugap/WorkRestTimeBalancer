@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 import 'package:work_rest_time_balancer/main.dart';
+import 'package:work_rest_time_balancer/src/labels.dart';
 import 'package:work_rest_time_balancer/src/rest_screen.dart';
 
 import 'fake_clock.dart';
@@ -56,6 +57,8 @@ void main() {
     expect(find.byType(RestScreen), findsOneWidget);
     expect(key('rest-command-startRest'), findsOneWidget);
     expect(key('rest-command-skipRest'), findsOneWidget);
+    // Спецификация требует отложение прямо на экране отдыха.
+    expect(key('rest-command-postponeRest'), findsOneWidget);
   });
 
   testWidgets('экран отдыха показывает таймер и ровно одно упражнение', (
@@ -92,7 +95,10 @@ void main() {
     await offerRest(tester);
 
     expect(key('rest-kind'), findsOneWidget);
-    expect(find.text('Длинный отдых'), findsOneWidget);
+    expect(
+      tester.widget<Text>(key('rest-kind')).data,
+      restKindLabel(RestKind.long),
+    );
 
     await openRestScreen(tester);
 

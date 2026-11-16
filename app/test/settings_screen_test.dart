@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 import 'package:work_rest_time_balancer/main.dart';
@@ -166,7 +166,7 @@ void main() {
     final reminders = RecordingReminders();
     engine = WorkDayEngine(reminders: reminders);
     engine.startWorkDay(clock.now());
-    await engine.remindPlanApplied;
+    await tester.pump();
     expect(reminders.planned, isNotEmpty);
 
     await pumpApp(tester);
@@ -174,17 +174,17 @@ void main() {
 
     await tap(tester, key('settings-notifications'));
     expect(settings().notificationsEnabled, isFalse);
-    await engine.remindPlanApplied;
+    await tester.pump();
     expect(reminders.planned, isEmpty);
 
     await tap(tester, key('settings-notifications'));
     expect(settings().notificationsEnabled, isTrue);
-    await engine.remindPlanApplied;
+    await tester.pump();
     expect(reminders.planned, isNotEmpty);
 
     await tap(tester, key('settings-sound'));
     expect(settings().soundEnabled, isFalse);
-    await engine.remindPlanApplied;
+    await tester.pump();
     expect(reminders.planned.every((r) => !r.playSound), isTrue);
   });
 

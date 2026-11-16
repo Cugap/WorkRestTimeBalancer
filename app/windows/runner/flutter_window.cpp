@@ -41,11 +41,6 @@ bool FlutterWindow::OnCreate() {
           result->Success();
           return;
         }
-        if (call.method_name() == "exit") {
-          Destroy();
-          result->Success();
-          return;
-        }
         result->NotImplemented();
       });
 

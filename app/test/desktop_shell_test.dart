@@ -48,6 +48,7 @@ void main() {
   });
 
   Finder key(String value) => find.byKey(ValueKey(value));
+  Finder field(String name) => key('settings-$name');
 
   Future<void> openSettings(WidgetTester tester) async {
     await tester.pumpWidget(
@@ -109,6 +110,31 @@ void main() {
 
     expect(desktop.launchAtStartup, isTrue);
     expect(engine.snapshot(clock.now()).settings.launchAtStartup, isTrue);
+  });
+
+  testWidgets('сохранение формы не сбрасывает трей и автозапуск', (
+    tester,
+  ) async {
+    final desktop = FakeDesktop();
+    await pumpWith(tester, desktop);
+
+    await tester.tap(key('settings-launch-at-startup'));
+    await tester.pump();
+    await tester.enterText(field('short-rest-interval'), '30');
+    await tester.pump();
+    await tester.ensureVisible(key('settings-save'));
+    await tester.tap(key('settings-save'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final saved = engine.snapshot(clock.now()).settings;
+    expect(saved.shortRestInterval, const Duration(minutes: 30));
+    expect(
+      saved.launchAtStartup,
+      isTrue,
+      reason: 'правка ритма не должна выключать автозапуск',
+    );
+    expect(saved.minimizeToTray, isTrue);
   });
 
   testWidgets('отказ системы виден и не меняет настройку', (tester) async {

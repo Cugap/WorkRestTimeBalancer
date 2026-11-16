@@ -163,7 +163,8 @@ class _RestScreenState extends State<RestScreen> {
                     children: [
                       for (final command in snapshot.availableCommands)
                         if (command == WorkDayCommand.startRest ||
-                            command == WorkDayCommand.skipRest)
+                            command == WorkDayCommand.skipRest ||
+                            command == WorkDayCommand.postponeRest)
                           FilledButton(
                             key: ValueKey('rest-command-${command.name}'),
                             onPressed: () => _dispatchCommand(command),
