@@ -460,6 +460,31 @@ void main() {
       expect(engine.snapshot(_at(13, 11)).restKind, RestKind.meal);
     });
 
+    test('пропуск обеда отодвигает длинный отдых с того же момента', () {
+      // Обед выигрывает совпадение с длинным отдыхом в 13:00. Если длинную
+      // точку не сдвинуть при пропуске, следующий же снимок предложил бы
+      // длинный отдых сразу после пропущенного обеда.
+      final engine = WorkDayEngine(
+        settings: RhythmSettings(
+          shortRestInterval: const Duration(hours: 12),
+          longRestInterval: const Duration(minutes: 90),
+        ),
+      )..startWorkDay(_at(11, 30));
+
+      final offered = engine.snapshot(_at(13));
+      expect(offered.phase, WorkDayPhase.restOffered);
+      expect(offered.restKind, RestKind.meal);
+
+      expect(engine.skipRest(_at(13, 1)), isA<WorkDayCommandAccepted>());
+      final skipped = engine.snapshot(_at(13, 1));
+
+      expect(skipped.phase, WorkDayPhase.running);
+      expect(skipped.nextRestAt, _at(14, 31));
+      expect(engine.snapshot(_at(14, 30)).phase, WorkDayPhase.running);
+      final longOffered = engine.snapshot(_at(14, 31));
+      expect(longOffered.restKind, RestKind.long);
+    });
+
     test(
       'пропуск обеда ничего не переносит и не сбрасывает длинный счётчик',
       () {

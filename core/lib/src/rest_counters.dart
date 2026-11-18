@@ -43,7 +43,9 @@ RestCounters countersAfterRest({
 /// момента пропуска, а счётчик длинного не обнуляется — следующий длинный
 /// наступает через интервал от плановой точки пропущенного, а если пропуск
 /// случился позже этого срока, то от момента пропуска. Пропущенный обед
-/// ничего не переносит: он предлагается только раз за рабочий день.
+/// ничего не переносит: он предлагается только раз за рабочий день, но
+/// вытесненную им длинную точку тоже отодвигает — иначе следующий снимок
+/// предложил бы длинный отдых сразу после пропущенного обеда.
 RestCounters countersAfterSkip({
   required RestCounters counters,
   required RestKind kind,
@@ -51,9 +53,6 @@ RestCounters countersAfterSkip({
   required RhythmSettings settings,
 }) {
   final shortAt = skippedAt.add(settings.shortRestInterval);
-  if (kind == RestKind.meal) {
-    return (shortAt: shortAt, longAt: counters.longAt, mealAt: null);
-  }
   if (kind == RestKind.long) {
     final planned = counters.longAt ?? skippedAt;
     final nextLong = planned.add(settings.longRestInterval);
@@ -73,7 +72,7 @@ RestCounters countersAfterSkip({
     longAt: longAt != null && !longAt.isAfter(skippedAt)
         ? skippedAt.add(settings.longRestInterval)
         : longAt,
-    mealAt: counters.mealAt,
+    mealAt: kind == RestKind.meal ? null : counters.mealAt,
   );
 }
 
