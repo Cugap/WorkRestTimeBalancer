@@ -104,7 +104,7 @@ void main() {
 
       final restored = PersistedDocument.fromJsonString(jsonEncode(json));
 
-      expect(restored.settings.minimizeToTray, isTrue);
+      expect(restored.settings.minimizeToTray, isFalse);
       expect(restored.settings.launchAtStartup, isFalse);
     });
 

@@ -14,7 +14,7 @@ RhythmSettings _changed({
   Duration mealDuration = const Duration(minutes: 60),
   bool notificationsEnabled = true,
   bool soundEnabled = true,
-  bool minimizeToTray = true,
+  bool minimizeToTray = false,
   bool launchAtStartup = false,
 }) => RhythmSettings(
   workStart: workStart,
@@ -49,10 +49,12 @@ void main() {
       expect(settings.soundEnabled, isTrue);
     });
 
-    test('по умолчанию окно сворачивается в трей, автозапуск выключен', () {
+    test('по умолчанию трей выключен, автозапуск выключен', () {
       const settings = RhythmSettings.defaults;
 
-      expect(settings.minimizeToTray, isTrue);
+      // Прятать окно в трей можно только по выбору человека: закрытие крестиком
+      // по умолчанию завершает приложение.
+      expect(settings.minimizeToTray, isFalse);
       expect(settings.launchAtStartup, isFalse);
     });
 

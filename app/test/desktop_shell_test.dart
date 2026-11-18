@@ -106,13 +106,17 @@ void main() {
     await pumpWith(tester, desktop);
 
     expect(key('settings-minimize-to-tray'), findsOneWidget);
+    // По умолчанию трей выключен: закрытие окна завершает приложение, пока
+    // человек сам не включил эту настройку.
+    expect(engine.snapshot(clock.now()).settings.minimizeToTray, isFalse);
+
     await tester.tap(key('settings-minimize-to-tray'));
     await tester.pump();
 
-    expect(desktop.closeToTray, isFalse);
+    expect(desktop.closeToTray, isTrue);
     expect(
       engine.snapshot(clock.now()).settings.minimizeToTray,
-      isFalse,
+      isTrue,
       reason: 'настройка живёт в ядре, чтобы пережить перезапуск',
     );
   });
@@ -150,7 +154,7 @@ void main() {
       isTrue,
       reason: 'правка ритма не должна выключать автозапуск',
     );
-    expect(saved.minimizeToTray, isTrue);
+    expect(saved.minimizeToTray, isFalse);
   });
 
   testWidgets('отказ системы виден и не меняет настройку', (tester) async {

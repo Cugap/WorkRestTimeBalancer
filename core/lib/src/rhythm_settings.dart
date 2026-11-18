@@ -21,7 +21,9 @@ final class RhythmSettings {
     this.mealDuration = const Duration(minutes: 60),
     this.notificationsEnabled = true,
     this.soundEnabled = true,
-    this.minimizeToTray = true,
+    // Крестик закрывает приложение, пока человек сам не попросил трей: прятать
+    // окно без его выбора — сюрприз, а не услуга.
+    this.minimizeToTray = false,
     this.launchAtStartup = false,
   });
 

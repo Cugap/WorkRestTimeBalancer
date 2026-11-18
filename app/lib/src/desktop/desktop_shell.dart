@@ -128,7 +128,7 @@ final class DesktopShell with TrayListener implements DesktopPreferences {
     'work_rest/desktop',
   );
 
-  bool _closeToTray = true;
+  bool _closeToTray = false;
   bool _started = false;
 
   @override

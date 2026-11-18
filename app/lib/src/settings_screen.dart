@@ -72,7 +72,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _transferError;
   bool _notificationsEnabled = true;
   bool _soundEnabled = true;
-  bool _minimizeToTray = true;
+  bool _minimizeToTray = false;
   bool _launchAtStartup = false;
   String? _desktopError;
   ReminderStatus? _reminderStatus;
@@ -519,10 +519,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Сворачивать в трей'),
                     subtitle: const Text(
-                      'Свёрнутое или закрытое окно прячется в трей: ритм и '
-                      'напоминания продолжаются. Значок приложения живёт в '
-                      'области уведомлений — если его не видно, откройте '
-                      '«Показать скрытые значки» на панели задач',
+                      'Выключено: крестик закрывает приложение. Включено: '
+                      'свёрнутое или закрытое окно прячется в трей, ритм и '
+                      'напоминания продолжаются, а значок живёт в области '
+                      'уведомлений — если его не видно, откройте «Показать '
+                      'скрытые значки» на панели задач',
                     ),
                     value: _minimizeToTray,
                     onChanged: _setMinimizeToTray,
