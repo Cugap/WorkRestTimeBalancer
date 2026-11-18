@@ -9,9 +9,12 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-// Трей на классическом API пакета: приложению нужен значок с двумя пунктами
-// меню, а новые nativeapi-биндинги строят меню собственными билдерами.
+// Трей на классическом API пакета: приложению нужен значок с пунктами меню,
+// а новые nativeapi-биндинги строят меню собственными билдерами.
 import 'package:tray_manager/legacy.dart';
+// Триггер меню: плагин включает его только на Linux, поэтому на Windows правый
+// клик по значку по умолчанию ничего не показывает.
+import 'package:tray_manager/tray_manager.dart' show ContextMenuTrigger;
 import 'package:win32_registry/win32_registry.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 
@@ -186,26 +189,36 @@ final class DesktopShell with TrayListener implements DesktopPreferences {
     }
   }
 
-  /// Пункты меню зависят от фазы: завершать можно только идущий день.
-  Future<void> _applyMenu() async {
+  /// Пункты меню трея для текущего состояния: открыть окно, завершить рабочий
+  /// день (когда он идёт) и выйти из приложения.
+  ///
+  /// Вынесено отдельным методом, чтобы состав меню проверялся тестом: значок в
+  /// трее руками не нажимается, а без пункта «Выход» приложение нечем закрыть.
+  @visibleForTesting
+  List<MenuItem> menuItems() {
     final snapshot = engine.snapshot(clock.now());
     final canFinish = snapshot.availableCommands.contains(
       WorkDayCommand.finish,
     );
     // Текст берётся из общего набора подписей: одно место для всех кнопок.
     final finishLabel = commandLabel(WorkDayCommand.finish, snapshot.phase);
-    await trayManager.setContextMenu(
-      Menu(
-        items: [
-          MenuItem(key: openItemKey, label: 'Открыть приложение'),
-          MenuItem(
-            key: finishItemKey,
-            label: canFinish ? finishLabel : '$finishLabel (недоступно)',
-          ),
-          MenuItem.separator(),
-          MenuItem(key: exitItemKey, label: 'Выход'),
-        ],
+    return [
+      MenuItem(key: openItemKey, label: 'Открыть приложение'),
+      MenuItem(
+        key: finishItemKey,
+        label: canFinish ? finishLabel : '$finishLabel (недоступно)',
       ),
+      MenuItem(key: exitItemKey, label: 'Выход'),
+    ];
+  }
+
+  /// Пункты меню зависят от фазы: завершать можно только идущий день.
+  Future<void> _applyMenu() async {
+    await trayManager.setContextMenu(Menu(items: menuItems()));
+    // Меню открывается правым кликом по значку. Плагин выставляет этот триггер
+    // только на Linux; на Windows по умолчанию меню не показывается вовсе.
+    trayManager.trayIcon?.setContextMenuTrigger(
+      ContextMenuTrigger.rightClicked,
     );
   }
 

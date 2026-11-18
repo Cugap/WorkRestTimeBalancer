@@ -183,6 +183,23 @@ void main() {
       );
     });
 
+    test('в меню есть «Выход», им приложение и закрывается', () {
+      engine.startWorkDay(clock.now());
+      clock.advance(const Duration(minutes: 5));
+
+      final items = shell.menuItems();
+
+      // Пункт выхода не должен теряться: при включённом трее это единственный
+      // способ закрыть приложение.
+      expect(items.map((item) => item.key), [
+        DesktopShell.openItemKey,
+        DesktopShell.finishItemKey,
+        DesktopShell.exitItemKey,
+      ]);
+      expect(items.last.label, 'Выход');
+      expect(items[1].label, isNot(contains('недоступно')));
+    });
+
     test('пункт «Выход» отдаёт решение оболочке', () {
       var exits = 0;
       shell.onExitRequested = () => exits++;
