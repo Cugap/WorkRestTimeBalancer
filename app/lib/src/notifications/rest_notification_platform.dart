@@ -8,7 +8,6 @@ import 'reminder_status.dart';
 
 /// Канал уведомлений одного вида отдыха. Каналы неизменяемы после создания,
 /// поэтому их ровно три и они создаются при запуске, а не первым уведомлением.
-/// На iOS каналов нет: там вид отдыха живёт только в тексте уведомления.
 final class RestNotificationChannel {
   const RestNotificationChannel(this.id, this.name, this.description);
 
@@ -43,14 +42,11 @@ RestNotificationChannel restNotificationChannel(RestKind kind) =>
 /// Платформенные операции, которые нужны напоминаниям: инициализация плагина,
 /// планирование и отмена, разрешения, нажатие на уведомление.
 ///
-/// Отдельный шов: на iOS и Android разрешения и нажатия устроены по-разному, а
-/// на машине без устройства проверить их можно только подменой платформы.
+/// Отдельный шов: на Android и Windows разрешения и нажатия устроены по-разному,
+/// а на машине без устройства проверить их можно только подменой платформы.
 abstract interface class RestNotificationPlatform {
-  /// Инициализировать плагин с настройками Darwin и обработчиком нажатия.
-  Future<void> initialize({
-    required DarwinInitializationSettings darwin,
-    required VoidCallback onOpen,
-  });
+  /// Инициализировать плагин с обработчиком нажатия.
+  Future<void> initialize({required VoidCallback onOpen});
 
   /// Приложение запущено нажатием на уведомление: обработчик такого нажатия
   /// не вызывается, экран отдыха открывается отдельно.
@@ -101,10 +97,7 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
   static const Duration _dueWindow = Duration(seconds: 1);
 
   @override
-  Future<void> initialize({
-    required DarwinInitializationSettings darwin,
-    required VoidCallback onOpen,
-  }) async {
+  Future<void> initialize({required VoidCallback onOpen}) async {
     const windows = WindowsInitializationSettings(
       appName: 'WorkRestTimeBalancer',
       // AUMID — учётное имя приложения в центре уведомлений Windows. Плагин
@@ -119,7 +112,6 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
         await _initializePlugin(
           InitializationSettings(
             android: const AndroidInitializationSettings('app_icon'),
-            iOS: darwin,
             windows: windows,
           ),
           onOpen,
@@ -185,17 +177,6 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
         notificationsAllowed: await android.areNotificationsEnabled() ?? true,
       );
     }
-    final ios = _ios;
-    if (ios != null) {
-      // На iOS точных будильников нет: локальное уведомление доставляет
-      // система, точность зависит только от разрешения на уведомления.
-      final options = await ios.checkPermissions();
-      return ReminderStatus(
-        exactAlarms: true,
-        notificationsAllowed: options?.isEnabled ?? true,
-        exactAlarmsApplicable: false,
-      );
-    }
     return const ReminderStatus(exactAlarms: true, notificationsAllowed: true);
   }
 
@@ -210,13 +191,6 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
       // На Android 14+ полноэкранное намерение требует отдельного согласия;
       // без него остаётся обычное heads-up напоминание.
       await android.requestFullScreenIntentPermission();
-      return readStatus();
-    }
-    final ios = _ios;
-    if (ios != null) {
-      // Звук запрашивается вместе с показом: без разрешения на звук
-      // отключённый в приложении звук был бы неотличим от разрешённого.
-      await ios.requestPermissions(alert: true, sound: true);
       return readStatus();
     }
     return readStatus();
@@ -383,14 +357,6 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
       ? _plugin
             .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin
-            >()
-      : null;
-
-  IOSFlutterLocalNotificationsPlugin? get _ios =>
-      defaultTargetPlatform == TargetPlatform.iOS
-      ? _plugin
-            .resolvePlatformSpecificImplementation<
-              IOSFlutterLocalNotificationsPlugin
             >()
       : null;
 }

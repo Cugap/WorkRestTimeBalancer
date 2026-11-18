@@ -65,8 +65,7 @@ class WorkRestApp extends StatefulWidget {
   /// адаптер напоминаний.
   final ReminderStatusSource? reminderStatus;
 
-  /// Трей и автозапуск на Windows; null — платформа без них (тесты, Android,
-  /// iOS).
+  /// Трей и автозапуск на Windows; null — платформа без них (тесты, Android).
   final DesktopShell? desktop;
 
   /// Возможности Windows для экрана настроек; по умолчанию — сам трей. Тесты

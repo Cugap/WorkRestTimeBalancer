@@ -28,26 +28,11 @@ final class RestNotifications
   /// Нажатие на напоминание: оболочка открывает экран отдыха.
   VoidCallback? onOpenRequested;
 
-  /// Настройки iOS. Разрешения здесь не запрашиваются: их просит
-  /// [requestPermissions], и только когда напоминания включены в настройках —
-  /// иначе приложение спрашивало бы их у того, кто их выключил. Параметры
-  /// показа по умолчанию включены, чтобы уведомление было видно и в переднем
-  /// плане.
-  static const DarwinInitializationSettings darwinSettings =
-      DarwinInitializationSettings(
-        requestAlertPermission: false,
-        requestSoundPermission: false,
-        requestBadgePermission: false,
-      );
-
   /// Инициализация плагина: часовой пояс, настройки платформ и обработчик
   /// нажатия. Без инициализации планировать напоминания нельзя.
   Future<void> initialize() async {
     tzdata.initializeTimeZones();
-    await _platform.initialize(
-      darwin: darwinSettings,
-      onOpen: () => onOpenRequested?.call(),
-    );
+    await _platform.initialize(onOpen: () => onOpenRequested?.call());
   }
 
   /// Приложение запущено нажатием на напоминание: обработчик ответа для такого
@@ -85,10 +70,9 @@ final class RestNotifications
   @override
   Future<void> cancelAll() => _ignoreFailures(_platform.cancelAll);
 
-  /// Детали уведомления. На iOS каналов нет, поэтому звук — это флаг
-  /// [DarwinNotificationDetails.presentSound]: плагин не проставляет звук при
-  /// `false`, и уведомление молчит и в фоне, и в переднем плане. Значок на
-  /// иконке не нужен: напоминания не копятся.
+  /// Детали уведомления для Android и Windows. Звук задаётся отдельно на
+  /// каждой платформе: на Android он глушится на уровне самого уведомления
+  /// (канал создан со звуком), на Windows — элементом `<audio silent="true">`.
   @visibleForTesting
   NotificationDetails detailsFor(RestReminder reminder) {
     final channel = restNotificationChannel(reminder.kind);
@@ -111,13 +95,6 @@ final class RestNotifications
         enableVibration: reminder.playSound,
         silent: !reminder.playSound,
         autoCancel: true,
-      ),
-      iOS: DarwinNotificationDetails(
-        presentAlert: true,
-        presentBanner: true,
-        presentList: true,
-        presentBadge: false,
-        presentSound: reminder.playSound,
       ),
       windows: WindowsNotificationDetails(
         // Без звука toast молчит; со звуком остаётся звук по умолчанию.

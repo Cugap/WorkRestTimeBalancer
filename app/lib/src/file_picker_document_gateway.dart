@@ -6,9 +6,9 @@ import 'package:work_rest_core/work_rest_core.dart';
 /// Файловый порт поверх `file_picker`.
 ///
 /// Диалог сохранения получает байты сам и возвращает `Uri` (null — отмена),
-/// поэтому путь к файлу нигде не нужен: на Android это SAF, на iOS — временная
-/// копия, на Windows — обычный файл. Диалог выбора отдаёт `PlatformFile`,
-/// который читается здесь целиком.
+/// поэтому путь к файлу нигде не нужен: на Android это SAF, на Windows —
+/// обычный файл. Диалог выбора отдаёт `PlatformFile`, который читается здесь
+/// целиком.
 final class FilePickerDocumentGateway implements DocumentFileGateway {
   const FilePickerDocumentGateway();
 

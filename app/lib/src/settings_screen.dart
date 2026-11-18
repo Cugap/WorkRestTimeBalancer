@@ -449,15 +449,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return const <Widget>[];
     }
     return [
-      if (status.exactAlarmsApplicable)
-        Text(
-          status.exactAlarms
-              ? 'Напоминания точные: система будит приложение в назначенную минуту'
-              : 'Напоминания неточные: нет разрешения на точные будильники, '
-                    'система может задержать их на несколько минут',
-          key: const ValueKey('settings-exact-alarms'),
-          style: theme.textTheme.bodyMedium,
-        ),
+      Text(
+        status.exactAlarms
+            ? 'Напоминания точные: система будит приложение в назначенную минуту'
+            : 'Напоминания неточные: нет разрешения на точные будильники, '
+                  'система может задержать их на несколько минут',
+        key: const ValueKey('settings-exact-alarms'),
+        style: theme.textTheme.bodyMedium,
+      ),
       if (!status.notificationsAllowed) ...[
         const SizedBox(height: 4),
         Text(
@@ -468,7 +467,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ],
-      if (status.exactAlarmsApplicable && !status.exactAlarms) ...[
+      if (!status.exactAlarms) ...[
         const SizedBox(height: 4),
         Align(
           alignment: Alignment.centerLeft,

@@ -209,24 +209,21 @@ void main() {
     expect(find.textContaining('точные'), findsOneWidget);
   });
 
-  testWidgets('на iOS настройки не обещают точных будильников', (tester) async {
+  testWidgets('запрет уведомлений в системе виден в настройках', (
+    tester,
+  ) async {
     final status = FakeReminderStatus(
-      const ReminderStatus(
-        exactAlarms: true,
-        notificationsAllowed: false,
-        exactAlarmsApplicable: false,
-      ),
+      const ReminderStatus(exactAlarms: true, notificationsAllowed: false),
     );
     await tester.pumpWidget(
       WorkRestApp(engine: engine, clock: clock, reminderStatus: status),
     );
     await openSettings(tester);
 
-    // Точных будильников на iOS нет, поэтому про точность ничего не сказано,
-    // а запрет уведомлений в системе виден.
-    expect(key('settings-exact-alarms'), findsNothing);
-    expect(key('settings-request-exact-alarms'), findsNothing);
+    // Точные напоминания выданы, а показ уведомлений запрещён в системе:
+    // экран говорит именно об этом и не предлагает разрешение на точность.
     expect(key('settings-notifications-blocked'), findsOneWidget);
+    expect(key('settings-request-exact-alarms'), findsNothing);
   });
 }
 

@@ -4,8 +4,8 @@ import 'package:work_rest_time_balancer/src/notifications/reminder_status.dart';
 import 'package:work_rest_time_balancer/src/notifications/rest_notification_platform.dart';
 
 /// Уведомление, дошедшее до платформы: то, что плагин запланировал бы в
-/// системе. Тесты проверяют именно его, потому что на машине без iOS и
-/// Android системного планировщика нет.
+/// системе. Тесты проверяют именно его, потому что на машине без Android и
+/// Windows системного планировщика нет.
 final class SentNotification {
   const SentNotification({
     required this.id,
@@ -27,7 +27,6 @@ final class SentNotification {
 /// Платформа напоминаний, которая запоминает вызовы вместо системных
 /// уведомлений. Нажатие и холодный запуск моделируются вручную.
 final class FakeRestNotificationPlatform implements RestNotificationPlatform {
-  DarwinInitializationSettings? darwin;
   VoidCallback? onOpen;
   bool launched = false;
   ReminderStatus status = const ReminderStatus(
@@ -45,11 +44,7 @@ final class FakeRestNotificationPlatform implements RestNotificationPlatform {
   void tap() => onOpen?.call();
 
   @override
-  Future<void> initialize({
-    required DarwinInitializationSettings darwin,
-    required VoidCallback onOpen,
-  }) async {
-    this.darwin = darwin;
+  Future<void> initialize({required VoidCallback onOpen}) async {
     this.onOpen = onOpen;
   }
 

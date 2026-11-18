@@ -39,7 +39,7 @@ void main() {
   }
 
   /// Начать день и дождаться предложения отдыха без единого фонового тика:
-  /// ровно так выглядит возврат в приложение на iOS.
+  /// ровно так выглядит возврат в приложение, которое было свёрнуто.
   void offerRestWithoutTicks() {
     engine.startWorkDay(clock.now());
     clock.advance(const Duration(minutes: 25));

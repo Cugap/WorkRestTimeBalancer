@@ -1,6 +1,7 @@
 # Flutter как стек для Android, iOS и Windows
 
 - **Status**: accepted
+- **Обновлено**: iOS выведен из MVP — см. ADR-0006. Из целевых платформ остались Android и Windows; выбор Flutter это не меняет (список ниже — запись исходного решения).
 
 Выбрали Flutter: все три целевые платформы для него официально поддерживаются и тестируются в CI (матрица Flutter 3.47 — Windows 10/11, Android 24–37, iOS 15–27), а один плагин закрывает запланированные уведомления на всех трёх: `flutter_local_notifications` поддерживает Android, iOS и Windows (Toast через C++/WinRT) и умеет Android full-screen intent.
 

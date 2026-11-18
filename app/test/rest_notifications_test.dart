@@ -26,26 +26,6 @@ void main() {
   });
 
   group('напоминания через платформу', () {
-    test(
-      'инициализация не просит разрешения раньше включённых настроек',
-      () async {
-        await notifications.initialize();
-
-        final darwin = platform.darwin;
-        expect(darwin, isNotNull);
-        // Разрешения спрашивает requestPermissions, когда напоминания включены:
-        // иначе приложение просило бы их у того, кто их выключил.
-        expect(darwin!.requestAlertPermission, isFalse);
-        expect(darwin.requestSoundPermission, isFalse);
-        expect(darwin.requestBadgePermission, isFalse);
-        // Показ в переднем плане включён: напоминание видно и при открытом
-        // приложении.
-        expect(darwin.defaultPresentAlert, isTrue);
-        expect(darwin.defaultPresentBanner, isTrue);
-        expect(darwin.defaultPresentList, isTrue);
-      },
-    );
-
     test('нажатие на уведомление доходит до оболочки', () async {
       var opened = 0;
       notifications.onOpenRequested = () => opened++;
@@ -62,7 +42,7 @@ void main() {
       expect(await notifications.launchedFromNotification(), isTrue);
     });
 
-    test('звук и показ передаются в детали iOS', () async {
+    test('текст напоминания собран из вида и длительности отдыха', () async {
       await notifications.schedule(_short(_at(9, 25)));
 
       final sent = platform.scheduled.single;
@@ -73,26 +53,6 @@ void main() {
       expect(sent.body, contains(formatHoursMinutes(const Duration(minutes: 3))));
       expect(sent.payload, restReminderPayload);
       expect(sent.at, _at(9, 25));
-
-      final ios = sent.details.iOS!;
-      expect(ios.presentAlert, isTrue);
-      expect(ios.presentBanner, isTrue);
-      expect(ios.presentList, isTrue);
-      // Значок на иконке не нужен: напоминания не копятся.
-      expect(ios.presentBadge, isFalse);
-      expect(ios.presentSound, isTrue);
-      // Имя файла не задано — плагин подставит системный звук.
-      expect(ios.sound, isNull);
-    });
-
-    test('выключенный звук делает уведомление iOS тихим', () async {
-      await notifications.schedule(_short(_at(9, 25), playSound: false));
-
-      final ios = platform.scheduled.single.details.iOS!;
-      expect(ios.presentSound, isFalse);
-      // Плагин ставит звук только при presentSound: уведомление молчит и в
-      // фоне, и в переднем плане.
-      expect(ios.sound, isNull);
     });
 
     test('включённый звук оставляет Windows звук по умолчанию', () async {
@@ -147,7 +107,6 @@ void main() {
       platform.status = const ReminderStatus(
         exactAlarms: true,
         notificationsAllowed: false,
-        exactAlarmsApplicable: false,
       );
 
       final status = await notifications.requestPermissions();
