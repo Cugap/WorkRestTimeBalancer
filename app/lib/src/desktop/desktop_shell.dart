@@ -116,6 +116,9 @@ final class DesktopShell with TrayListener implements DesktopPreferences {
   /// Ключ пункта меню «Завершить рабочий день».
   static const String finishItemKey = 'finish';
 
+  /// Ключ пункта меню «Выход».
+  static const String exitItemKey = 'exit';
+
   final WorkDayEngine engine;
   final Clock clock;
   final AutostartPort autostart;
@@ -133,6 +136,10 @@ final class DesktopShell with TrayListener implements DesktopPreferences {
 
   /// Показать окно приложения: из трея или из уведомления.
   VoidCallback? onOpenRequested;
+
+  /// Выйти из приложения: оболочка сохраняет данные и завершает процесс.
+  /// Без этого пункта при включённом трее приложение нечем закрыть.
+  VoidCallback? onExitRequested;
 
   bool get closeToTray => _closeToTray;
 
@@ -152,10 +159,7 @@ final class DesktopShell with TrayListener implements DesktopPreferences {
     // Раннер перехватывает закрытие окна сам: сообщаем ему решение.
     await _attempt(
       'close',
-      () => _windowChannel.invokeMethod<void>(
-        'setCloseToTray',
-        _closeToTray,
-      ),
+      () => _windowChannel.invokeMethod<void>('setCloseToTray', _closeToTray),
     );
 
     // Автозапуск приводится к настройке при каждом старте: так реестр
@@ -189,10 +193,7 @@ final class DesktopShell with TrayListener implements DesktopPreferences {
       WorkDayCommand.finish,
     );
     // Текст берётся из общего набора подписей: одно место для всех кнопок.
-    final finishLabel = commandLabel(
-      WorkDayCommand.finish,
-      snapshot.phase,
-    );
+    final finishLabel = commandLabel(WorkDayCommand.finish, snapshot.phase);
     await trayManager.setContextMenu(
       Menu(
         items: [
@@ -202,6 +203,7 @@ final class DesktopShell with TrayListener implements DesktopPreferences {
             label: canFinish ? finishLabel : '$finishLabel (недоступно)',
           ),
           MenuItem.separator(),
+          MenuItem(key: exitItemKey, label: 'Выход'),
         ],
       ),
     );
@@ -260,6 +262,8 @@ final class DesktopShell with TrayListener implements DesktopPreferences {
       case finishItemKey:
         engine.finishWorkDay(clock.now());
         refresh();
+      case exitItemKey:
+        onExitRequested?.call();
     }
   }
 

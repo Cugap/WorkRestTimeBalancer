@@ -206,6 +206,12 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
     }
     case WM_SIZE: {
+      // Настройка «сворачивать в трей»: свёрнутое окно прячется целиком, а не
+      // остаётся кнопкой на панели задач. Вернуть его можно из значка трея.
+      if (wparam == SIZE_MINIMIZED && close_to_tray_) {
+        ShowWindow(hwnd, SW_HIDE);
+        return 0;
+      }
       RECT rect = GetClientArea();
       if (child_content_ != nullptr) {
         // Size and position the child window.

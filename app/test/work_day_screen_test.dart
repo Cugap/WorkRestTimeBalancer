@@ -28,6 +28,23 @@ void main() {
     await tester.pump();
   }
 
+  testWidgets('настройки открываются подписанной кнопкой', (tester) async {
+    await pumpApp(tester);
+
+    // Кнопка подписана, а не только иконкой с подсказкой: безымянный значок в
+    // углу окна легко принять за украшение.
+    expect(find.text('Настройки'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('open-settings-screen')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(
+      find.byKey(const ValueKey('settings-short-rest-interval')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('кнопки экрана соответствуют фазе ядра', (tester) async {
     await pumpApp(tester);
 

@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:work_rest_core/work_rest_core.dart';
@@ -144,11 +144,11 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
       appBar: AppBar(
         title: const Text('Рабочий день'),
         actions: [
-          IconButton(
+          TextButton.icon(
             key: const ValueKey('open-settings-screen'),
-            tooltip: 'Настройки',
-            icon: const Icon(Icons.tune),
             onPressed: _openSettingsScreen,
+            icon: const Icon(Icons.tune),
+            label: const Text('Настройки'),
           ),
         ],
       ),

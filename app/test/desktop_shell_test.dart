@@ -1,10 +1,29 @@
+// Трей проверяется на том же классическом API, что и в оболочке: пункты меню
+// нельзя собрать через новые nativeapi-билдеры, не поднимая трей.
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tray_manager/legacy.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 import 'package:work_rest_time_balancer/main.dart';
 import 'package:work_rest_time_balancer/src/desktop/desktop_shell.dart';
 
 import 'fake_clock.dart';
+
+/// Автозапуск, который ничего не пишет в реестр.
+final class FakeAutostart implements AutostartPort {
+  bool enabled = false;
+
+  @override
+  Future<bool> isEnabled() async => enabled;
+
+  @override
+  Future<bool> setEnabled(bool value) async {
+    enabled = value;
+    return true;
+  }
+}
 
 /// Оболочка Windows, которая запоминает запросы и умеет «отказать».
 final class FakeDesktop implements DesktopPreferences {
@@ -59,10 +78,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
   }
 
-  Future<void> pumpWith(
-    WidgetTester tester,
-    DesktopPreferences desktop,
-  ) async {
+  Future<void> pumpWith(WidgetTester tester, DesktopPreferences desktop) async {
     await tester.pumpWidget(
       WorkRestApp(
         engine: engine,
@@ -150,5 +166,37 @@ void main() {
       isFalse,
       reason: 'настройка остаётся прежней, если система не дала применить',
     );
+  });
+
+  group('меню трея', () {
+    late DesktopShell shell;
+
+    setUp(() {
+      shell = DesktopShell(
+        engine: engine,
+        clock: clock,
+        autostart: FakeAutostart(),
+      );
+    });
+
+    test('пункт «Выход» отдаёт решение оболочке', () {
+      var exits = 0;
+      shell.onExitRequested = () => exits++;
+
+      shell.onTrayMenuItemClick(MenuItem(key: DesktopShell.exitItemKey));
+
+      // Само завершение процесса делает оболочка: она сохраняет день и снимает
+      // напоминания, а трей только передаёт намерение.
+      expect(exits, 1);
+    });
+
+    test('пункт «Завершить рабочий день» завершает день', () {
+      engine.startWorkDay(clock.now());
+      clock.advance(const Duration(hours: 1));
+
+      shell.onTrayMenuItemClick(MenuItem(key: DesktopShell.finishItemKey));
+
+      expect(engine.snapshot(clock.now()).phase, WorkDayPhase.finished);
+    });
   });
 }

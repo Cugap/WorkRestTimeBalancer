@@ -519,8 +519,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Сворачивать в трей'),
                     subtitle: const Text(
-                      'Закрытие окна прячет приложение в трей: ритм и '
-                      'напоминания продолжаются',
+                      'Свёрнутое или закрытое окно прячется в трей: ритм и '
+                      'напоминания продолжаются. Значок приложения живёт в '
+                      'области уведомлений — если его не видно, откройте '
+                      '«Показать скрытые значки» на панели задач',
                     ),
                     value: _minimizeToTray,
                     onChanged: _setMinimizeToTray,

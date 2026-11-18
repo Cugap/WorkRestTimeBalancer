@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:work_rest_core/work_rest_core.dart';
@@ -28,6 +29,14 @@ Future<void> main() async {
   // Трей на Windows: окно можно свернуть, а ритм и напоминания продолжатся.
   final desktop = DesktopShell(engine: session.engine, clock: clock);
   await desktop.start();
+  // Выход из меню трея: снять напоминания, сохранить день и завершить процесс.
+  // При включённом трее это единственный способ закрыть приложение.
+  desktop.onExitRequested = () async {
+    await notifications.cancelAll();
+    await session.save();
+    await desktop.dispose();
+    exit(0);
+  };
   runApp(
     WorkRestApp(
       session: session,
