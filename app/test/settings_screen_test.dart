@@ -56,11 +56,28 @@ void main() {
     expect(fieldText(tester, 'work-start'), '09:00');
     expect(fieldText(tester, 'work-end'), '18:00');
     expect(fieldText(tester, 'short-rest-interval'), '25');
-    expect(fieldText(tester, 'short-rest-duration'), '3');
+    // Длительность короткого отдыха вводится в секундах: 3 минуты = 180.
+    expect(fieldText(tester, 'short-rest-duration'), '180');
     expect(fieldText(tester, 'long-rest-interval'), '90');
     expect(fieldText(tester, 'long-rest-duration'), '10');
     expect(fieldText(tester, 'meal-start'), '13:00');
     expect(fieldText(tester, 'meal-duration'), '60');
+  });
+
+  testWidgets('у полей настроек видны единицы измерения', (tester) async {
+    await pumpApp(tester);
+    await openSettings(tester);
+
+    // Минуты и секунды подписаны прямо в поле: иначе 20 и 300 не отличить от
+    // минут.
+    expect(find.text('Короткий отдых, интервал, мин'), findsOneWidget);
+    expect(find.text('Короткий отдых, длительность, с'), findsOneWidget);
+    expect(find.text('Длинный отдых, интервал, мин'), findsOneWidget);
+    expect(find.text('Длинный отдых, длительность, мин'), findsOneWidget);
+    expect(find.text('Обед, длительность, мин'), findsOneWidget);
+    // Значение по умолчанию — 3 минуты — показано в секундах.
+    expect(fieldText(tester, 'short-rest-duration'), '180');
+    expect(fieldText(tester, 'short-rest-interval'), '25');
   });
 
   testWidgets('сохранение отправляет новые значения в ядро', (tester) async {
@@ -69,7 +86,7 @@ void main() {
 
     await enter(tester, 'work-end', '20:00');
     await enter(tester, 'short-rest-interval', '30');
-    await enter(tester, 'short-rest-duration', '4');
+    await enter(tester, 'short-rest-duration', '240');
     await enter(tester, 'long-rest-interval', '120');
     await enter(tester, 'long-rest-duration', '15');
     await enter(tester, 'meal-start', '14:00');
@@ -151,7 +168,7 @@ void main() {
     expect(engine.snapshot(clock.now()).phase, WorkDayPhase.resting);
 
     await openSettings(tester);
-    await enter(tester, 'short-rest-duration', '5');
+    await enter(tester, 'short-rest-duration', '300');
     await enter(tester, 'short-rest-interval', '30');
     await tap(tester, key('settings-save'));
 

@@ -65,6 +65,9 @@ void main() {
     expect(phase(WorkDayPhase.paused), findsOneWidget);
     expect(command(WorkDayCommand.resume), findsOneWidget);
     expect(command(WorkDayCommand.finish), findsOneWidget);
+    // Подпись называет предмет: «Завершить» рядом с «Паузой» читается как
+    // «закрыть приложение».
+    expect(find.text('Завершить рабочий день'), findsOneWidget);
 
     await tapCommand(tester, WorkDayCommand.resume);
     expect(phase(WorkDayPhase.running), findsOneWidget);

@@ -44,7 +44,7 @@ String commandLabel(
     phase == WorkDayPhase.finished ? 'Начать новый рабочий день' : 'Начать',
   WorkDayCommand.pause => 'Пауза',
   WorkDayCommand.resume => 'Продолжить',
-  WorkDayCommand.finish => 'Завершить',
+  WorkDayCommand.finish => 'Завершить рабочий день',
   WorkDayCommand.startRest =>
     restKind == RestKind.meal ? 'Начать обед' : 'Начать отдых',
   WorkDayCommand.finishRest => 'Закончить сейчас',

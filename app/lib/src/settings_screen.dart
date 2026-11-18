@@ -103,7 +103,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _controllers[_Field.shortRestInterval]!.text = _minutesText(
       settings.shortRestInterval,
     );
-    _controllers[_Field.shortRestDuration]!.text = _minutesText(
+    _controllers[_Field.shortRestDuration]!.text = _secondsText(
       settings.shortRestDuration,
     );
     _controllers[_Field.longRestInterval]!.text = _minutesText(
@@ -133,7 +133,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (shortRestInterval == null) {
       return _reportFormat(_Field.shortRestInterval);
     }
-    final shortRestDuration = _parseMinutes(_text(_Field.shortRestDuration));
+    final shortRestDuration = _parseSeconds(_text(_Field.shortRestDuration));
     if (shortRestDuration == null) {
       return _reportFormat(_Field.shortRestDuration);
     }
@@ -386,21 +386,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _label(_Field field) => switch (field) {
     _Field.workStart => 'Начало рабочего окна',
     _Field.workEnd => 'Конец рабочего окна',
-    _Field.shortRestInterval => 'Короткий отдых, интервал',
-    _Field.shortRestDuration => 'Короткий отдых, длительность',
-    _Field.longRestInterval => 'Длинный отдых, интервал',
-    _Field.longRestDuration => 'Длинный отдых, длительность',
+    _Field.shortRestInterval => 'Короткий отдых, интервал, мин',
+    _Field.shortRestDuration => 'Короткий отдых, длительность, с',
+    _Field.longRestInterval => 'Длинный отдых, интервал, мин',
+    _Field.longRestDuration => 'Длинный отдых, длительность, мин',
     _Field.mealStart => 'Обед, время',
-    _Field.mealDuration => 'Обед, длительность',
+    _Field.mealDuration => 'Обед, длительность, мин',
   };
 
   String _hint(_Field field) => switch (field) {
     _Field.workStart || _Field.workEnd || _Field.mealStart => 'ЧЧ:ММ',
-    _Field.shortRestInterval => '20–30 мин',
-    _Field.shortRestDuration => '20 с – 5 мин',
-    _Field.longRestInterval => '60–120 мин',
-    _Field.longRestDuration => '5–15 мин',
-    _Field.mealDuration => 'мин',
+    _Field.shortRestInterval => '20–30',
+    // Длительность короткого отдыха вводится в секундах: нижняя граница
+    // 20 секунд в минутах была бы дробным числом.
+    _Field.shortRestDuration => '20–300',
+    _Field.longRestInterval => '60–120',
+    _Field.longRestDuration => '5–15',
+    _Field.mealDuration => 'больше нуля',
   };
 
   String _minutesText(Duration duration) {
@@ -410,6 +412,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     final minutes = seconds / Duration.secondsPerMinute;
     return minutes
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  String _secondsText(Duration duration) {
+    final milliseconds = duration.inMilliseconds;
+    if (milliseconds % Duration.millisecondsPerSecond == 0) {
+      return '${milliseconds ~/ Duration.millisecondsPerSecond}';
+    }
+    final seconds = milliseconds / Duration.millisecondsPerSecond;
+    return seconds
         .toStringAsFixed(2)
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
@@ -438,6 +452,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     return Duration(
       milliseconds: (minutes * Duration.millisecondsPerMinute).round(),
+    );
+  }
+
+  Duration? _parseSeconds(String text) {
+    final seconds = double.tryParse(text.trim().replaceAll(',', '.'));
+    if (seconds == null || !seconds.isFinite || seconds.abs() > 1e6) {
+      return null;
+    }
+    return Duration(
+      milliseconds: (seconds * Duration.millisecondsPerSecond).round(),
     );
   }
 

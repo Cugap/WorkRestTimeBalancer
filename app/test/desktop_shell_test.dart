@@ -197,7 +197,9 @@ void main() {
         DesktopShell.exitItemKey,
       ]);
       expect(items.last.label, 'Выход');
-      expect(items[1].label, isNot(contains('недоступно')));
+      // Подпись называет предмет целиком: «Завершить» в меню трея читается как
+      // «закрыть приложение».
+      expect(items[1].label, 'Завершить рабочий день');
     });
 
     test('пункт «Выход» отдаёт решение оболочке', () {
