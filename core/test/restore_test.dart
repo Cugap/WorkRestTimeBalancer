@@ -147,6 +147,95 @@ void main() {
     });
 
     test(
+      'отложенное предложение возвращается после перезапуска с израсходованным '
+      'лимитом отложений',
+      () {
+        final engine = WorkDayEngine(settings: _shortRhythm);
+        engine.startWorkDay(_at(9));
+        engine.snapshot(_at(9, 25));
+        engine.postponeRest(_at(9, 25));
+        engine.snapshot(_at(9, 30));
+        engine.postponeRest(_at(9, 30));
+
+        final restored = _restore(engine.document());
+        final snapshot = restored.snapshot(_at(9, 35));
+
+        expect(snapshot.phase, WorkDayPhase.restOffered);
+        expect(snapshot.restKind, RestKind.short);
+        expect(snapshot.remainingPostponements, 0);
+        expect(snapshot.availableCommands, [
+          WorkDayCommand.startRest,
+          WorkDayCommand.skipRest,
+          WorkDayCommand.pause,
+          WorkDayCommand.finish,
+          WorkDayCommand.startMeal,
+        ]);
+        expect(snapshot.events, [
+          WorkDayEvent.started(_at(9)),
+          WorkDayEvent.restOffered(
+            _at(9, 25),
+            RestKind.short,
+            plannedDuration: const Duration(minutes: 3),
+          ),
+          WorkDayEvent.restPostponed(
+            _at(9, 25),
+            RestKind.short,
+            plannedDuration: const Duration(minutes: 3),
+          ),
+          WorkDayEvent.restOffered(
+            _at(9, 30),
+            RestKind.short,
+            plannedDuration: const Duration(minutes: 3),
+          ),
+          WorkDayEvent.restPostponed(
+            _at(9, 30),
+            RestKind.short,
+            plannedDuration: const Duration(minutes: 3),
+          ),
+          WorkDayEvent.restOffered(
+            _at(9, 35),
+            RestKind.short,
+            plannedDuration: const Duration(minutes: 3),
+          ),
+        ]);
+        expect(
+          (restored.postponeRest(_at(9, 36)) as WorkDayCommandRejected).reason,
+          RejectionReason.postponeLimitReached,
+        );
+      },
+    );
+
+    test(
+      'отложенное предложение ждёт в приложении, открытом намного позже',
+      () {
+        final engine = WorkDayEngine(settings: _shortRhythm);
+        engine.startWorkDay(_at(9));
+        engine.snapshot(_at(9, 25));
+        engine.postponeRest(_at(9, 25));
+        engine.snapshot(_at(9, 30));
+        engine.postponeRest(_at(9, 30));
+
+        final restored = _restore(engine.document());
+        final snapshot = restored.snapshot(_at(10, 30));
+
+        // Отложенный отдых не считается пропущенным: он ждёт человека, а
+        // счётчик отложений остаётся израсходованным.
+        expect(snapshot.phase, WorkDayPhase.restOffered);
+        expect(snapshot.remainingPostponements, 0);
+        expect(
+          snapshot.events.where(
+            (event) => event.type == WorkDayEventType.restSkipped,
+          ),
+          isEmpty,
+        );
+        expect(
+          snapshot.events.last.at,
+          _at(9, 35),
+        );
+      },
+    );
+
+    test(
       'пропущенные точки отдыха пишутся пропусками, предлагается один отдых',
       () {
         final engine = WorkDayEngine(settings: _shortRhythm);

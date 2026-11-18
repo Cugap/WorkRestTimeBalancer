@@ -2,8 +2,12 @@ import 'dart:async';
 
 import 'exercise.dart';
 import 'exercise_catalog.dart';
+import 'exercise_picker.dart';
 import 'persisted_document.dart';
+import 'reminder_plan.dart';
+import 'rest_counters.dart';
 import 'rest_kind.dart';
+import 'rest_kind_profile.dart';
 import 'rest_reminder.dart';
 import 'rest_reminder_port.dart';
 import 'rhythm_settings.dart';
@@ -77,10 +81,10 @@ final class WorkDayEngine {
   /// Набор упражнений, из которого ядро выбирает их по кругу.
   final List<Exercise> catalog;
 
-  /// Сколько ближайших точек отдыха напоминать заранее. Небольшое окно нужно
-  /// из-за лимита на число запланированных уведомлений на iOS (около 64) и
-  /// ради того, чтобы каждая смена состояния переписывала только актуальные
-  /// напоминания. По умолчанию [defaultReminderLimit].
+  /// Сколько ближайших точек отдыха напоминать заранее. Небольшое окно —
+  /// защитная граница: каждая смена состояния переписывает только актуальные
+  /// напоминания, а раскладка не тянется на весь рабочий день. По умолчанию
+  /// [defaultReminderLimit].
   final int reminderLimit;
 
   /// Порт напоминаний; null — ядро работает без напоминаний (тесты ядра и
@@ -330,10 +334,10 @@ final class WorkDayEngine {
     _runningSince = null;
     _phase = WorkDayPhase.resting;
     _currentRestKind = kind;
-    _restPlannedDuration = _restDurationFor(kind);
+    _restPlannedDuration = restDuration(kind, _settings);
     _restEndsAt = now.add(_restPlannedDuration!);
     _restStartedAt = now;
-    _restExercises = _takeExercises(_exerciseCountFor(kind));
+    _restExercises = _exercisesFor(kind);
     _restOffered = false;
     _nextRestAt = null;
     _offerKind = null;
@@ -391,27 +395,23 @@ final class WorkDayEngine {
   void _skipAt(DateTime at, RestKind kind) {
     _restOffered = false;
     _currentRestKind = null;
-    _nextShortRestAt = at.add(_settings.shortRestInterval);
+    final counters = countersAfterSkip(
+      counters: (
+        shortAt: _nextShortRestAt,
+        longAt: _nextLongRestAt,
+        mealAt: _mealCandidateAt,
+      ),
+      kind: kind,
+      skippedAt: at,
+      settings: _settings,
+    );
+    _nextShortRestAt = counters.shortAt;
+    _nextLongRestAt = counters.longAt;
     if (kind == RestKind.meal) {
-      // Пропуск обеда ничего не переносит: следующий обед будет только в
-      // новом рабочем дне, а длинный счётчик не сбрасывается. Новый интервал
-      // работы начинается с момента пропуска, как у любого пропуска.
+      // Пропущенный обед считается состоявшимся: повторно в этом рабочем дне
+      // он не предлагается.
       _mealTaken = true;
       _nextMealAt = null;
-    }
-    if (kind == RestKind.long) {
-      final planned = _nextLongRestAt ?? at;
-      final nextLong = planned.add(_settings.longRestInterval);
-      _nextLongRestAt = nextLong.isAfter(at)
-          ? nextLong
-          : at.add(_settings.longRestInterval);
-    } else {
-      // Обед с приоритетом мог вытеснить длинный отдых, точка которого уже
-      // прошла: сдвигаем её так, чтобы пропуск не создавал долга.
-      final longAt = _nextLongRestAt;
-      if (longAt != null && !longAt.isAfter(at)) {
-        _nextLongRestAt = at.add(_settings.longRestInterval);
-      }
     }
     _scheduleNextOffer();
     _workIntervalStartedAt = at;
@@ -420,7 +420,7 @@ final class WorkDayEngine {
       WorkDayEvent.restSkipped(
         at,
         kind,
-        plannedDuration: _restDurationFor(kind),
+        plannedDuration: restDuration(kind, _settings),
       ),
     );
   }
@@ -452,7 +452,7 @@ final class WorkDayEngine {
       WorkDayEvent.restPostponed(
         now,
         kind,
-        plannedDuration: _restDurationFor(kind),
+        plannedDuration: restDuration(kind, _settings),
       ),
     );
     return const WorkDayCommandAccepted();
@@ -723,78 +723,34 @@ final class WorkDayEngine {
   }
 
   /// Напоминания на ближайшие точки отдыха: не больше [reminderLimit] штук и
-  /// только внутри рабочего окна. Пустой список означает «отменить всё» —
-  /// так ядро отвечает на паузу, конец рабочего дня, выключенные напоминания
-  /// и уже показанное или идущее предложение.
+  /// только внутри рабочего окна. Пустой список означает «отменить всё» — так
+  /// ядро отвечает на паузу, конец рабочего дня, выключенные напоминания и уже
+  /// показанное или идущее предложение.
   ///
-  /// Точки считаются вперёд по тем же правилам, что и настоящий ритм: каждый
-  /// отдых сдвигает счётчик своего вида на свою длительность плюс интервал,
-  /// короткий отдых переносит и счётчик длинного, обед сбрасывает оба.
+  /// Саму раскладку строит [planReminders] по счётчикам и настройкам: правила
+  /// продвижения счётчиков у неё общие с настоящим ритмом.
   List<RestReminder> _reminderPlan() {
     if (!_settings.notificationsEnabled) {
       return const <RestReminder>[];
     }
     final endsAt = _workWindowEndsAt;
-    final counters = _reminderCounters;
-    if (endsAt == null || counters == null) {
+    final start = _reminderCounters;
+    if (endsAt == null || start == null) {
       return const <RestReminder>[];
     }
-
-    var shortAt = counters.shortAt;
-    var longAt = counters.longAt;
-    var mealAt = counters.mealAt;
-    final reminders = <RestReminder>[];
-    while (reminders.length < reminderLimit) {
-      final candidates =
-          <(DateTime, RestKind)>[
-            if (shortAt != null) (shortAt, RestKind.short),
-            if (longAt != null) (longAt, RestKind.long),
-            if (mealAt != null) (mealAt, RestKind.meal),
-          ].where((candidate) {
-            final at = candidate.$1;
-            return at.isAfter(counters.from) && at.isBefore(endsAt);
-          }).toList();
-      if (candidates.isEmpty) {
-        break;
-      }
-      candidates.sort((a, b) {
-        final byMoment = a.$1.compareTo(b.$1);
-        return byMoment != 0
-            ? byMoment
-            : _offerPriority(a.$2).compareTo(_offerPriority(b.$2));
-      });
-
-      final (at, kind) = candidates.first;
-      final duration = _restDurationFor(kind);
-      reminders.add(
-        RestReminder(
-          at: at,
-          kind: kind,
-          duration: duration,
-          playSound: _settings.soundEnabled,
-        ),
-      );
-      switch (kind) {
-        case RestKind.meal:
-          shortAt = at.add(duration).add(_settings.shortRestInterval);
-          longAt = at.add(duration).add(_settings.longRestInterval);
-          mealAt = null;
-        case RestKind.long:
-          shortAt = at.add(duration).add(_settings.shortRestInterval);
-          longAt = at.add(duration).add(_settings.longRestInterval);
-        case RestKind.short:
-          shortAt = at.add(duration).add(_settings.shortRestInterval);
-          longAt = longAt?.add(duration);
-      }
-    }
-    return List<RestReminder>.unmodifiable(reminders);
+    return planReminders(
+      counters: start.counters,
+      from: start.from,
+      workWindowEndsAt: endsAt,
+      settings: _settings,
+      limit: reminderLimit,
+    );
   }
 
   /// Счётчики, от которых начинается проекция напоминаний, и момент, раньше
   /// которого точек отдыха уже нет. Null — напоминать сейчас не о чем: день не
   /// идёт, стоит на паузе, завершён или отдых уже предлагается.
-  ({DateTime from, DateTime? shortAt, DateTime? longAt, DateTime? mealAt})?
-  get _reminderCounters {
+  ({DateTime from, RestCounters counters})? get _reminderCounters {
     switch (_visiblePhase) {
       case WorkDayPhase.notStarted:
       case WorkDayPhase.finished:
@@ -811,15 +767,17 @@ final class WorkDayEngine {
         final postponedAt = _postponesUsed > 0 ? _nextRestAt : null;
         return (
           from: from,
-          shortAt: _offerKind == RestKind.short && postponedAt != null
-              ? postponedAt
-              : _nextShortRestAt,
-          longAt: _offerKind == RestKind.long && postponedAt != null
-              ? postponedAt
-              : _nextLongRestAt,
-          mealAt: _offerKind == RestKind.meal && postponedAt != null
-              ? postponedAt
-              : _mealCandidateAt,
+          counters: (
+            shortAt: _offerKind == RestKind.short && postponedAt != null
+                ? postponedAt
+                : _nextShortRestAt,
+            longAt: _offerKind == RestKind.long && postponedAt != null
+                ? postponedAt
+                : _nextLongRestAt,
+            mealAt: _offerKind == RestKind.meal && postponedAt != null
+                ? postponedAt
+                : _mealCandidateAt,
+          ),
         );
       case WorkDayPhase.resting:
         final endsAt = _restEndsAt;
@@ -832,27 +790,20 @@ final class WorkDayEngine {
           return null;
         }
         // Отдых доигрывает до планового конца: от него и продолжается ритм.
-        final planned = _restPlannedDuration ?? Duration.zero;
-        return switch (kind) {
-          RestKind.meal => (
-            from: endsAt,
-            shortAt: endsAt.add(_settings.shortRestInterval),
-            longAt: endsAt.add(_settings.longRestInterval),
-            mealAt: null,
+        return (
+          from: endsAt,
+          counters: countersAfterRest(
+            counters: (
+              shortAt: _nextShortRestAt,
+              longAt: _nextLongRestAt,
+              mealAt: _mealCandidateAt,
+            ),
+            kind: kind,
+            endedAt: endsAt,
+            settings: _settings,
+            shortRestDuration: _restPlannedDuration ?? Duration.zero,
           ),
-          RestKind.long => (
-            from: endsAt,
-            shortAt: endsAt.add(_settings.shortRestInterval),
-            longAt: endsAt.add(_settings.longRestInterval),
-            mealAt: _mealCandidateAt,
-          ),
-          RestKind.short => (
-            from: endsAt,
-            shortAt: endsAt.add(_settings.shortRestInterval),
-            longAt: _nextLongRestAt?.add(planned),
-            mealAt: _mealCandidateAt,
-          ),
-        };
+        );
     }
   }
 
@@ -874,9 +825,9 @@ final class WorkDayEngine {
       return null;
     }
     if (_phase == WorkDayPhase.resting) {
-      return _restPlannedDuration ?? _restDurationFor(kind);
+      return _restPlannedDuration ?? restDuration(kind, _settings);
     }
-    return _restDurationFor(kind);
+    return restDuration(kind, _settings);
   }
 
   /// Довести состояние до момента [now] и вернуть момент, который движок
@@ -927,6 +878,12 @@ final class WorkDayEngine {
           : null;
       final offerKind = _offerKind;
       if (offerAt != null && offerKind != null && !offerAt.isAfter(now)) {
+        // Отложенное предложение возвращается как есть: отдых не пропущен,
+        // просто приложение было закрыто в его момент. Счётчик отложений
+        // остаётся израсходованным, иначе лимит обходился бы перезапуском.
+        if (_postponesUsed > 0) {
+          break;
+        }
         _skipAt(offerAt, offerKind);
         missedRests = true;
         if (offerKind != RestKind.meal) {
@@ -971,7 +928,7 @@ final class WorkDayEngine {
       WorkDayEvent.restOffered(
         now,
         kind,
-        plannedDuration: _restDurationFor(kind),
+        plannedDuration: restDuration(kind, _settings),
       ),
     );
   }
@@ -997,19 +954,22 @@ final class WorkDayEngine {
     _clearRest();
     _lastRestFinished = restFinished;
 
-    switch (kind) {
-      case RestKind.meal:
-        // Обед сбрасывает оба счётчика: ритм начинается заново от его конца.
-        _nextShortRestAt = endedAt.add(_settings.shortRestInterval);
-        _nextLongRestAt = endedAt.add(_settings.longRestInterval);
-      case RestKind.long:
-        _nextLongRestAt = endedAt.add(_settings.longRestInterval);
-        _nextShortRestAt = endedAt.add(_settings.shortRestInterval);
-      case RestKind.short:
-        // Отдых — не рабочее время: счётчик длинного отдыха сдвигается на него.
-        _nextLongRestAt = _nextLongRestAt?.add(actualDuration);
-        _nextShortRestAt = endedAt.add(_settings.shortRestInterval);
-    }
+    // Ритм продолжается от конца отдыха по общим правилам вида отдыха: для
+    // короткого отдыха счётчик длинного сдвигается на фактическую длительность,
+    // даже если отдых закончили досрочно.
+    final counters = countersAfterRest(
+      counters: (
+        shortAt: _nextShortRestAt,
+        longAt: _nextLongRestAt,
+        mealAt: _mealCandidateAt,
+      ),
+      kind: kind,
+      endedAt: endedAt,
+      settings: _settings,
+      shortRestDuration: actualDuration,
+    );
+    _nextShortRestAt = counters.shortAt;
+    _nextLongRestAt = counters.longAt;
 
     final windowEndsAt = _workWindowEndsAt;
     if (windowEndsAt != null && !endedAt.isBefore(windowEndsAt)) {
@@ -1043,7 +1003,7 @@ final class WorkDayEngine {
       endedAt,
       kind,
       restFinishReason: reason,
-      plannedDuration: _restPlannedDuration ?? _restDurationFor(kind),
+      plannedDuration: _restPlannedDuration ?? restDuration(kind, _settings),
       actualDuration: endedAt.difference(_restStartedAt ?? endedAt),
     );
   }
@@ -1107,7 +1067,7 @@ final class WorkDayEngine {
       WorkDayEvent.restOffered(
         next,
         kind,
-        plannedDuration: _restDurationFor(kind),
+        plannedDuration: restDuration(kind, _settings),
       ),
     );
   }
@@ -1116,33 +1076,14 @@ final class WorkDayEngine {
   /// При совпадении моментов обед важнее повторяющегося отдыха, а длинный
   /// отдых — важнее короткого: обед не теряется, а отдыхи не идут очередью.
   void _scheduleNextOffer() {
-    final mealAt = _mealCandidateAt;
-    final candidates = <(DateTime, RestKind)>[
-      if (_nextShortRestAt != null) (_nextShortRestAt!, RestKind.short),
-      if (_nextLongRestAt != null) (_nextLongRestAt!, RestKind.long),
-      if (mealAt != null) (mealAt, RestKind.meal),
-    ];
-    if (candidates.isEmpty) {
-      _nextRestAt = null;
-      _offerKind = null;
-      return;
-    }
-    candidates.sort((a, b) {
-      final byMoment = a.$1.compareTo(b.$1);
-      return byMoment != 0
-          ? byMoment
-          : _offerPriority(a.$2).compareTo(_offerPriority(b.$2));
-    });
-    _nextRestAt = candidates.first.$1;
-    _offerKind = candidates.first.$2;
+    final point = nearestRestPoint((
+      shortAt: _nextShortRestAt,
+      longAt: _nextLongRestAt,
+      mealAt: _mealCandidateAt,
+    ));
+    _nextRestAt = point?.$1;
+    _offerKind = point?.$2;
   }
-
-  /// Порядок выбора при совпадении моментов: обед, длинный, короткий.
-  int _offerPriority(RestKind kind) => switch (kind) {
-    RestKind.meal => 0,
-    RestKind.long => 1,
-    RestKind.short => 2,
-  };
 
   /// Момент обеда, если он ещё не состоялся в этом рабочем дне. Попадание за
   /// конец окна отсекает [_nextRestAtWithinWindow].
@@ -1249,51 +1190,17 @@ final class WorkDayEngine {
     return _worked;
   }
 
-  /// Сколько упражнений показывает отдых: короткий — одно, длинный — два из
-  /// разных категорий, обед — три, по одному из каждой категории.
-  int _exerciseCountFor(RestKind kind) => switch (kind) {
-    RestKind.short => 1,
-    RestKind.long => 2,
-    RestKind.meal => 3,
-  };
-
-  /// Плановая длительность отдыха по его виду.
-  Duration _restDurationFor(RestKind kind) => switch (kind) {
-    RestKind.short => _settings.shortRestDuration,
-    RestKind.long => _settings.longRestDuration,
-    RestKind.meal => _settings.mealDuration,
-  };
-
-  /// Взять [count] упражнений по кругу, не повторяя уже взятые в этом отдыхе и
-  /// добавляя каждое следующее из другой категории. Курсор запоминается в
-  /// состоянии движка, поэтому первый отдых следующего раза не повторяет
-  /// прошлое упражнение, а после конца набора круг начинается заново.
-  List<Exercise> _takeExercises(int count) {
-    if (catalog.isEmpty) {
-      return const <Exercise>[];
-    }
-    final taken = <Exercise>[];
-    for (var slot = 0; slot < count; slot++) {
-      Exercise? chosen;
-      for (var step = 0; step < catalog.length; step++) {
-        final index = (_nextExerciseIndex + step) % catalog.length;
-        final candidate = catalog[index];
-        if (taken.contains(candidate)) {
-          continue;
-        }
-        if (taken.any((taken) => taken.category == candidate.category)) {
-          continue;
-        }
-        chosen = candidate;
-        _nextExerciseIndex = (index + 1) % catalog.length;
-        break;
-      }
-      if (chosen == null) {
-        break;
-      }
-      taken.add(chosen);
-    }
-    return List.unmodifiable(taken);
+  /// Взять упражнения для отдыха вида [kind]: сколько и каких решают набор и
+  /// таблица вида отдыха, а курсор круга остаётся в состоянии движка, поэтому
+  /// следующий отдых не начинается с того же упражнения.
+  List<Exercise> _exercisesFor(RestKind kind) {
+    final picked = pickExercises(
+      catalog: catalog,
+      startIndex: _nextExerciseIndex,
+      count: restExerciseCount(kind),
+    );
+    _nextExerciseIndex = picked.nextIndex;
+    return picked.exercises;
   }
 
   Duration _remainingInWorkWindow(DateTime now) {
