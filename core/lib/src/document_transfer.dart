@@ -1,5 +1,7 @@
 import 'document_file_gateway.dart';
 import 'persisted_document.dart';
+import 'settings_validation.dart';
+import 'work_day_command.dart';
 import 'work_day_engine.dart';
 
 /// Итог экспорта. Отмена ничего не меняет и не пишет событий.
@@ -82,24 +84,43 @@ final class DocumentTransfer {
   /// Прочитать файл, выбранный пользователем, и проверить его.
   ///
   /// Ничего не применяет: оболочка показывает подтверждение и лишь после него
-  /// вызывает [applyImport]. Чужой формат и повреждение возвращаются отказом с
-  /// понятным сообщением, текущие данные при этом не меняются.
+  /// вызывает [applyImport]. Чужой формат, повреждение и настройки вне
+  /// пользовательских диапазонов возвращаются отказом с понятным сообщением,
+  /// текущие данные при этом не меняются.
+  ///
+  /// Файл приходит извне, поэтому проверка диапазонов здесь обязательна:
+  /// собственный документ устройства всегда им соответствует, а подсунутый
+  /// файл — нет, и применённые из него значения оставили бы приложение в
+  /// состоянии, которое нельзя получить через настройки.
   Future<ImportOutcome> selectImport() async {
     final payload = await gateway.pick();
     if (payload == null) {
       return const ImportCancelled();
     }
+    final PersistedDocument document;
     try {
-      return ImportRead(PersistedDocument.fromJsonString(payload));
+      document = PersistedDocument.fromJsonString(payload);
     } on DocumentFormatException catch (error) {
       return ImportRejected(error.reason, error.message);
     }
+    final violation = settingsViolation(document.settings);
+    if (violation != null) {
+      return ImportRejected(
+        DocumentRejection.invalidSettings,
+        'файл содержит недопустимые настройки: '
+        '${settingsViolationText(violation)}',
+      );
+    }
+    return ImportRead(document);
   }
 
   /// Применить импортированный документ: настройки и журнал заменяются,
   /// идущий рабочий день, идущий отдых и показанное предложение остаются.
   /// Вызывается только после явного подтверждения пользователя.
-  void applyImport(DateTime now, PersistedDocument imported) {
-    engine.applyImportedDocument(now, imported);
-  }
+  ///
+  /// Отказ ядра ничего не меняет: [ImportRead] уже проверен
+  /// [selectImport], а возвращённый результат нужен для честного ответа, если
+  /// документ до движка дошёл в обход выбора файла.
+  WorkDayCommandResult applyImport(DateTime now, PersistedDocument imported) =>
+      engine.applyImportedDocument(now, imported);
 }

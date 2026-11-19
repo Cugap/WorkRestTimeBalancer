@@ -70,6 +70,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   _Field? _errorField;
   String? _errorText;
   String? _transferError;
+
+  /// Нарушение правил в действующих настройках. Так бывает, если в приложение
+  /// попал файл с настройками вне диапазонов: тогда любое сохранение формы
+  /// отклоняется, и экран обязан сказать, почему и что с этим делать.
+  RejectionReason? _currentViolation;
   bool _notificationsEnabled = true;
   bool _soundEnabled = true;
   bool _minimizeToTray = false;
@@ -82,6 +87,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     final settings = widget.engine.snapshot(widget.clock.now()).settings;
     _fill(settings);
+    _currentViolation = settingsViolation(settings);
     _notificationsEnabled = settings.notificationsEnabled;
     _soundEnabled = settings.soundEnabled;
     _minimizeToTray = settings.minimizeToTray;
@@ -264,10 +270,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (confirmed != true || !mounted) {
           return;
         }
-        widget.transfer.applyImport(widget.clock.now(), document);
-        _fill(widget.engine.snapshot(widget.clock.now()).settings);
-        setState(() => _transferError = null);
-        widget.onStateChanged?.call();
+        switch (widget.transfer.applyImport(widget.clock.now(), document)) {
+          case WorkDayCommandAccepted():
+            final settings = widget.engine
+                .snapshot(widget.clock.now())
+                .settings;
+            _fill(settings);
+            setState(() {
+              _currentViolation = settingsViolation(settings);
+              _transferError = null;
+            });
+            widget.onStateChanged?.call();
+          case WorkDayCommandRejected(:final reason):
+            setState(() => _transferError = rejectionText(reason));
+        }
     }
   }
 
@@ -519,6 +535,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (_currentViolation != null) ...[
+                  Text(
+                    'Текущие настройки недопустимы: '
+                    '${rejectionText(_currentViolation!)}. '
+                    'Пока значение не исправлено, сохранение отклоняется; '
+                    '«По умолчанию» вернёт исходные значения.',
+                    key: const ValueKey('settings-current-invalid'),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 SwitchListTile(
                   key: const ValueKey('settings-notifications'),
                   contentPadding: EdgeInsets.zero,

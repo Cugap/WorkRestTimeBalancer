@@ -46,6 +46,29 @@ void main() {
     await tester.pump();
   }
 
+  testWidgets('недопустимые настройки в ядре объяснены и исправимы', (
+    tester,
+  ) async {
+    // Так выглядит приложение, в которое попал файл с настройками вне
+    // диапазонов: сохранение формы отклоняется, пока значение не исправлено.
+    engine = WorkDayEngine(
+      settings: RhythmSettings.defaults.copyWith(
+        shortRestInterval: const Duration(minutes: 10),
+      ),
+    );
+    await pumpApp(tester);
+    await openSettings(tester);
+
+    expect(key('settings-current-invalid'), findsOneWidget);
+    expect(find.textContaining('от 20 до 30 минут'), findsOneWidget);
+
+    await enter(tester, 'short-rest-interval', '25');
+    await tap(tester, key('settings-save'));
+
+    expect(settings().shortRestInterval, const Duration(minutes: 25));
+    expect(find.byType(SettingsScreen), findsNothing);
+  });
+
   testWidgets('экран настроек открывается из главного и показывает ядро', (
     tester,
   ) async {

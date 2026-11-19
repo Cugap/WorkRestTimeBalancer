@@ -32,6 +32,17 @@ final class FakeGateway implements DocumentFileGateway {
 
 DateTime _at(int hour, [int minute = 0]) => DateTime(2026, 3, 4, hour, minute);
 
+/// Документ «из файла» с подменённым интервалом короткого отдыха: интерфейс
+/// таких значений не даёт, но подсунуть их в JSON можно.
+String _documentWith({
+  Duration shortRestInterval = const Duration(minutes: 25),
+}) => PersistedDocument(
+  settings: RhythmSettings.defaults.copyWith(
+    shortRestInterval: shortRestInterval,
+  ),
+  journal: const <WorkDayEvent>[],
+).toJsonString();
+
 void main() {
   test('экспорт пишет настройки и журнал одним документом с версией', () async {
     final engine = WorkDayEngine();
@@ -193,6 +204,51 @@ void main() {
     final rejected = outcome as ImportRejected;
     expect(rejected.rejection, DocumentRejection.unsupportedVersion);
     expect(rejected.message, isNotEmpty);
+    expect(engine.document(), before);
+  });
+
+  test('файл с настройками вне диапазонов отклоняется', () async {
+    final engine = WorkDayEngine();
+    engine.startWorkDay(_at(9));
+    engine.snapshot(_at(9, 10));
+    final before = engine.document();
+    final transfer = DocumentTransfer(
+      engine: engine,
+      gateway: FakeGateway(
+        picked: _documentWith(shortRestInterval: const Duration(minutes: 10)),
+      ),
+    );
+
+    final outcome = await transfer.selectImport();
+
+    expect(outcome, isA<ImportRejected>());
+    final rejected = outcome as ImportRejected;
+    expect(rejected.rejection, DocumentRejection.invalidSettings);
+    // Сообщение называет правило, а не только факт отказа.
+    expect(rejected.message, contains('20 до 30 минут'));
+    expect(engine.document(), before);
+  });
+
+  test('движок не принимает импорт с настройками вне диапазонов', () {
+    final engine = WorkDayEngine();
+    engine.startWorkDay(_at(9));
+    final before = engine.document();
+    final imported = PersistedDocument(
+      settings: RhythmSettings.defaults.copyWith(
+        shortRestInterval: const Duration(minutes: 10),
+      ),
+      journal: [WorkDayEvent.started(_at(8))],
+    );
+
+    final result = engine.applyImportedDocument(_at(9, 10), imported);
+
+    expect(result, isA<WorkDayCommandRejected>());
+    expect(
+      (result as WorkDayCommandRejected).reason,
+      RejectionReason.shortRestIntervalOutOfRange,
+    );
+    // Отказ не трогает ни настройки, ни журнал, ни время наблюдения: иначе
+    // подсунутый файл оставил бы приложение без возможности сохранять настройки.
     expect(engine.document(), before);
   });
 

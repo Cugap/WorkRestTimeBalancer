@@ -49,6 +49,27 @@ RejectionReason? settingsViolation(RhythmSettings settings) {
   return null;
 }
 
+/// Объяснение отказа [settingsViolation] словами. Одно место, где правило
+/// названо человеку: тем же текстом отвечают экран настроек и отказ импорта
+/// файла, поэтому подсказки не расходятся с диапазонами.
+String settingsViolationText(RejectionReason reason) => switch (reason) {
+  RejectionReason.workWindowStartNotBeforeEnd =>
+    'Начало рабочего окна должно быть раньше конца',
+  RejectionReason.shortRestIntervalOutOfRange =>
+    'Интервал короткого отдыха — от 20 до 30 минут',
+  RejectionReason.shortRestDurationOutOfRange =>
+    'Длительность короткого отдыха — от 20 секунд до 5 минут',
+  RejectionReason.longRestIntervalOutOfRange =>
+    'Интервал длинного отдыха — от 1 до 2 часов',
+  RejectionReason.longRestDurationOutOfRange =>
+    'Длительность длинного отдыха — от 5 до 15 минут',
+  RejectionReason.mealDurationNotPositive =>
+    'Длительность обеда должна быть больше нуля',
+  RejectionReason.mealNotInsideWorkWindow =>
+    'Обед должен целиком помещаться в рабочее окно',
+  _ => throw ArgumentError.value(reason, 'reason', 'не отказ по настройкам'),
+};
+
 bool _within(Duration value, Duration min, Duration max) =>
     value >= min && value <= max;
 

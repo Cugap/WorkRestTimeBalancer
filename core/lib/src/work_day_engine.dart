@@ -169,7 +169,20 @@ final class WorkDayEngine {
   /// применяются к расчёту следующих отдыхов. Состояние дня из документа
   /// игнорируется — переносится только то, что спецификация называет данными.
   /// Момент импорта дописывается в конец нового журнала.
-  void applyImportedDocument(DateTime now, PersistedDocument imported) {
+  ///
+  /// Настройки проверяются теми же правилами, что и ввод на экране настроек:
+  /// движок хранит только допустимые значения, иначе следующий же ввод в
+  /// настройках перестал бы сохраняться. Отказ ничего не меняет — ни настроек,
+  /// ни журнала, ни времени последнего наблюдения.
+  WorkDayCommandResult applyImportedDocument(
+    DateTime now,
+    PersistedDocument imported,
+  ) {
+    final violation = settingsViolation(imported.settings);
+    if (violation != null) {
+      return WorkDayCommandRejected(violation);
+    }
+
     now = _syncWithClock(now);
 
     final previous = _settings;
@@ -180,6 +193,7 @@ final class WorkDayEngine {
       ..add(WorkDayEvent.dataImported(now));
     _lastRestFinished = _lastRestFinishedInJournal();
     _applySettingsToSchedule(now, previous);
+    return const WorkDayCommandAccepted();
   }
 
   WorkDayState _state() => WorkDayState(

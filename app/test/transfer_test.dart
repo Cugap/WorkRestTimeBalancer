@@ -24,6 +24,15 @@ PersistedDocument _foreignDocument() => PersistedDocument(
   ],
 );
 
+/// Документ «с другого устройства» с интервалом короткого отдыха вне
+/// диапазона: интерфейс таких значений не даёт, но подсунуть их в JSON можно.
+String _outOfRangeDocument() => PersistedDocument(
+  settings: RhythmSettings.defaults.copyWith(
+    shortRestInterval: const Duration(minutes: 10),
+  ),
+  journal: const <WorkDayEvent>[],
+).toJsonString();
+
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
   await tester.tap(finder);
@@ -145,6 +154,24 @@ void main() {
     expect(session.engine.document(), before);
     expect(store.document, storedBefore);
   });
+
+  testWidgets(
+    'настройки вне диапазонов в файле отклоняются без потери данных',
+    (tester) async {
+      await pumpApp(tester, picked: _outOfRangeDocument());
+      await _tap(tester, _key('command-start'));
+      await openSettings(tester);
+      final before = session.engine.document();
+      final storedBefore = store.document;
+
+      await _tap(tester, _key('settings-import'));
+
+      expect(_key('settings-transfer-error'), findsOneWidget);
+      expect(_key('import-confirmation'), findsNothing);
+      expect(session.engine.document(), before);
+      expect(store.document, storedBefore);
+    },
+  );
 
   testWidgets('файл другой версии отклоняется без потери данных', (
     tester,
