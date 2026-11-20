@@ -43,7 +43,6 @@ Future<void> main() async {
       clock: clock,
       notifications: notifications,
       desktop: desktop,
-      trayMenu: desktop,
     ),
   );
 }
@@ -59,8 +58,11 @@ class WorkRestApp extends StatefulWidget {
     this.reminderStatus,
     this.desktop,
     this.desktopPreferences,
-    this.trayMenu,
-  }) : session = session ?? WorkDaySession.inMemory(engine);
+    TrayMenuRefresher? trayMenu,
+  }) : session = session ?? WorkDaySession.inMemory(engine),
+       // Меню трея — это тот же объект, что и трей: если вывести его из
+       // `desktop`, забыть про обновление меню при сборке приложения нельзя.
+       trayMenu = trayMenu ?? desktop;
 
   final WorkDaySession session;
   final Clock? clock;

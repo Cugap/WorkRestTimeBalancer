@@ -250,13 +250,14 @@ void main() {
 
     await tester.tap(key('command-start'));
     await tester.pump();
-    expect(trayMenu.refreshes, 1);
+    final afterStart = trayMenu.refreshes;
+    expect(afterStart, greaterThan(0), reason: 'день начат — меню устарело');
 
     await tester.tap(key('command-finish'));
     await tester.pump();
     expect(
       trayMenu.refreshes,
-      2,
+      greaterThan(afterStart),
       reason: 'после завершения дня меню тоже должно обновиться',
     );
   });

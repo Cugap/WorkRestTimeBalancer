@@ -4,6 +4,7 @@ import 'package:work_rest_core/work_rest_core.dart';
 import 'package:work_rest_time_balancer/main.dart';
 
 import 'fake_clock.dart';
+import 'suspending_clock.dart';
 
 void main() {
   late FakeClock clock;
@@ -216,5 +217,25 @@ void main() {
     expect(command(WorkDayCommand.postponeRest), findsNothing);
     expect(command(WorkDayCommand.startRest), findsOneWidget);
     expect(command(WorkDayCommand.skipRest), findsOneWidget);
+  });
+
+  testWidgets('экран догоняет время, прошедшее при заблокированном экране', (
+    tester,
+  ) async {
+    // В глубоком сне Android стоит `Stopwatch`, а настенные часы идут. Если
+    // верить только монотонному времени, экран покажет, что до конца окна
+    // осталось больше, чем есть на самом деле.
+    final suspendedClock = SuspendingClock(DateTime(2026, 3, 4, 9));
+    await tester.pumpWidget(WorkRestApp(engine: engine, clock: suspendedClock));
+    await tester.tap(command(WorkDayCommand.start));
+    await tester.pump();
+
+    expect(find.text('До конца рабочего окна: 9 ч'), findsOneWidget);
+
+    // Экран был заблокирован два часа: тиков не было, часы стоят.
+    suspendedClock.sleep(const Duration(hours: 2));
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.text('До конца рабочего окна: 7 ч'), findsOneWidget);
   });
 }
