@@ -100,12 +100,20 @@ abstract interface class DesktopPreferences {
   Future<bool> setLaunchAtStartup(bool enabled);
 }
 
+/// Публикация меню в трей: оболочка пересобирает его после смены состояния
+/// дня, чтобы пункты соответствовали фазе.
+abstract interface class TrayMenuRefresher {
+  Future<void> refresh();
+}
+
 /// Трей и поведение окна на Windows.
 ///
 /// Ядро о трее не знает: ритм и напоминания идут как обычно, а трей только
 /// прячет окно и даёт открыть приложение или завершить рабочий день. Ошибки
 /// платформы логируются: интеграции не должны срывать работу приложения.
-final class DesktopShell with TrayListener implements DesktopPreferences {
+final class DesktopShell
+    with TrayListener
+    implements DesktopPreferences, TrayMenuRefresher {
   DesktopShell({
     required this.engine,
     required this.clock,
@@ -223,6 +231,7 @@ final class DesktopShell with TrayListener implements DesktopPreferences {
   }
 
   /// Обновить трей после смены состояния: меню показывает, что можно сейчас.
+  @override
   Future<void> refresh() async {
     if (!isSupported || !_started) {
       return;

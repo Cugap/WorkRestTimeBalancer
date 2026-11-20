@@ -43,6 +43,7 @@ Future<void> main() async {
       clock: clock,
       notifications: notifications,
       desktop: desktop,
+      trayMenu: desktop,
     ),
   );
 }
@@ -58,6 +59,7 @@ class WorkRestApp extends StatefulWidget {
     this.reminderStatus,
     this.desktop,
     this.desktopPreferences,
+    this.trayMenu,
   }) : session = session ?? WorkDaySession.inMemory(engine);
 
   final WorkDaySession session;
@@ -80,6 +82,10 @@ class WorkRestApp extends StatefulWidget {
   /// Возможности Windows для экрана настроек; по умолчанию — сам трей. Тесты
   /// подменяют их фейком, не поднимая ни трей, ни реестр.
   final DesktopPreferences? desktopPreferences;
+
+  /// Меню трея, которое пересобирается после каждой смены состояния дня:
+  /// иначе пункт «Завершить рабочий день» остаётся с прежней подписью.
+  final TrayMenuRefresher? trayMenu;
 
   @override
   State<WorkRestApp> createState() => _WorkRestAppState();
@@ -127,6 +133,16 @@ class _WorkRestAppState extends State<WorkRestApp> {
 
   void _save() => unawaited(widget.session.save());
 
+  /// Смена состояния: сохранить документ и пересобрать меню трея, чтобы оно
+  /// показывало, что можно сделать сейчас.
+  void _onStateChanged() {
+    _save();
+    final trayMenu = widget.trayMenu;
+    if (trayMenu != null) {
+      unawaited(trayMenu.refresh());
+    }
+  }
+
   /// Снимок догоняет время, прошедшее в фоне, и заодно перепланирует
   /// напоминания: пока приложение было свёрнуто, точки отдыха могли сдвинуться.
   void _replanReminders() {
@@ -169,7 +185,7 @@ class _WorkRestAppState extends State<WorkRestApp> {
               builder: (_) => RestScreen(
                 engine: widget.session.engine,
                 clock: _clock,
-                onStateChanged: _save,
+                onStateChanged: _onStateChanged,
               ),
             ),
           )
@@ -187,7 +203,7 @@ class _WorkRestAppState extends State<WorkRestApp> {
         engine: widget.session.engine,
         clock: _clock,
         transfer: _transfer,
-        onStateChanged: _save,
+        onStateChanged: _onStateChanged,
         reminderStatus: widget.reminderStatus ?? widget.notifications,
         desktop: widget.desktopPreferences ?? widget.desktop,
       ),

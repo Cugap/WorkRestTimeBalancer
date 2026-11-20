@@ -25,6 +25,14 @@ final class FakeAutostart implements AutostartPort {
   }
 }
 
+/// Меню трея, которое только считает обновления: живой значок тесту не нужен.
+final class FakeTrayMenu implements TrayMenuRefresher {
+  int refreshes = 0;
+
+  @override
+  Future<void> refresh() async => refreshes++;
+}
+
 /// Оболочка Windows, которая запоминает запросы и умеет «отказать».
 final class FakeDesktop implements DesktopPreferences {
   FakeDesktop({this.supported = true, this.accepts = true});
@@ -221,5 +229,35 @@ void main() {
 
       expect(engine.snapshot(clock.now()).phase, WorkDayPhase.finished);
     });
+
+    test('в завершённом дне подпись говорит, что завершать нечего', () {
+      engine.startWorkDay(clock.now());
+      clock.advance(const Duration(minutes: 30));
+      engine.finishWorkDay(clock.now());
+
+      expect(shell.menuItems()[1].label, 'Завершить рабочий день (недоступно)');
+    });
+  });
+
+  testWidgets('смена состояния дня пересобирает меню трея', (tester) async {
+    // Меню собирается из снимка ядра. Если его не пересобрать, пункт
+    // «Завершить рабочий день» врёт о доступности до перезапуска приложения.
+    final trayMenu = FakeTrayMenu();
+    await tester.pumpWidget(
+      WorkRestApp(engine: engine, clock: clock, trayMenu: trayMenu),
+    );
+    expect(trayMenu.refreshes, 0);
+
+    await tester.tap(key('command-start'));
+    await tester.pump();
+    expect(trayMenu.refreshes, 1);
+
+    await tester.tap(key('command-finish'));
+    await tester.pump();
+    expect(
+      trayMenu.refreshes,
+      2,
+      reason: 'после завершения дня меню тоже должно обновиться',
+    );
   });
 }
