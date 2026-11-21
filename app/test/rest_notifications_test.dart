@@ -44,16 +44,39 @@ void main() {
 
     test('запуск из напоминания не снимает показанное уведомление', () async {
       platform.launched = true;
+      platform.launchedId = 5650;
 
       await notifications.initialize();
 
-      expect(platform.keptShownInherited, isTrue);
+      expect(platform.lastKeepId, 5650);
     });
 
-    test('обычный запуск снимает унаследованное расписание', () async {
+    test('обычный запуск снимает унаследованную раскладку', () async {
       await notifications.initialize();
 
-      expect(platform.keptShownInherited, isFalse);
+      expect(platform.lastKeepId, isNull);
+    });
+
+    test('ответ снимает и напоминание, которым запустили приложение', () async {
+      platform.launched = true;
+      platform.launchedId = 5650;
+      await notifications.initialize();
+
+      // После догона предложение может получить другой номер: ответ должен
+      // снять и его, и запустившее уведомление.
+      await notifications.dismiss(_short(_at(9, 31)));
+
+      expect(platform.cancelled, containsAll(<int>[5710, 5650]));
+    });
+
+    test('совпадающий номер снимается один раз', () async {
+      platform.launched = true;
+      platform.launchedId = 5650;
+      await notifications.initialize();
+
+      await notifications.dismiss(_short(_at(9, 25)));
+
+      expect(platform.cancelled, [5650]);
     });
 
     test('текст напоминания собран из вида и длительности отдыха', () async {

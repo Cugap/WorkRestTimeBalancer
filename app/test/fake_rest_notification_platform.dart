@@ -36,7 +36,8 @@ final class FakeRestNotificationPlatform implements RestNotificationPlatform {
   int permissionRequests = 0;
   int exactAlarmRequests = 0;
   int cancelAllCalls = 0;
-  bool? keptShownInherited;
+  int? lastKeepId;
+  int? launchedId = 5650;
   final List<int> cancelled = <int>[];
   final List<SentNotification> scheduled = <SentNotification>[];
   Object? scheduleFailure;
@@ -51,12 +52,15 @@ final class FakeRestNotificationPlatform implements RestNotificationPlatform {
   }
 
   @override
-  Future<void> clearInherited({required bool keepShown}) async {
-    keptShownInherited = keepShown;
+  Future<void> clearPreviousRun({required int? keepId}) async {
+    lastKeepId = keepId;
   }
 
   @override
   Future<bool> launchedFromNotification() async => launched;
+
+  @override
+  Future<int?> launchedReminderId() async => launched ? launchedId : null;
 
   @override
   Future<ReminderStatus> readStatus() async {

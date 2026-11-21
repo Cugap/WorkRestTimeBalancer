@@ -257,7 +257,7 @@ void main() {
     await tester.tap(command(WorkDayCommand.start));
     await tester.pump();
     expect(platform.scheduled, isNotEmpty);
-    final writes = platform.cancelAllCalls;
+    final cancelsBefore = platform.cancelAllCalls;
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -265,7 +265,7 @@ void main() {
     clock.advance(const Duration(minutes: 25));
     await tester.pump(const Duration(seconds: 2));
 
-    expect(platform.cancelAllCalls, writes);
+    expect(platform.cancelAllCalls, cancelsBefore);
     expect(platform.scheduled, isNotEmpty);
 
     // Вернулись в приложение: день догнался, отдых предложен.

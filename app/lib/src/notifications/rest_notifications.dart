@@ -33,14 +33,20 @@ final class RestNotifications
   /// Инициализация плагина: часовой пояс, настройки платформ и обработчик
   /// нажатия. Без инициализации планировать напоминания нельзя.
   ///
-  /// Расписание прошлого запуска снимается здесь же. Если приложение запущено
+  /// Раскладка прошлого запуска снимается здесь же. Если приложение запущено
   /// напоминанием, показанное уведомление не трогается: оно ещё нужно
-  /// человеку и исчезнет, когда он ответит на отдых.
+  /// человеку и исчезнет, когда он ответит на отдых. Номер этого уведомления
+  /// запоминается: после догона предложение может получить другой номер, и
+  /// ответ должен снять именно запустившее уведомление.
   Future<void> initialize() async {
     tzdata.initializeTimeZones();
     await _platform.initialize(onOpen: () => onOpenRequested?.call());
-    final launched = await launchedFromNotification();
-    await _platform.clearInherited(keepShown: launched);
+    final launchedId = await _guarded<int?>(
+      _platform.launchedReminderId,
+      fallback: null,
+    );
+    _launchedReminderId = launchedId;
+    await _platform.clearPreviousRun(keepId: launchedId);
   }
 
   /// Приложение запущено нажатием на напоминание: обработчик ответа для такого
@@ -105,10 +111,22 @@ final class RestNotifications
   }
 
   /// Снять напоминание, на которое человек ответил в приложении: платформа
-  /// отменяет его по номеру, включая уже показанное уведомление.
+  /// отменяет его по номеру, включая уже показанное уведомление. Если
+  /// приложение было запущено напоминанием, снимается и оно — даже когда
+  /// после догона у предложения оказался другой номер.
   @override
-  Future<void> dismiss(RestReminder reminder) =>
-      _ignoreFailures(() => _platform.cancel(id: _reminderId(reminder)));
+  Future<void> dismiss(RestReminder reminder) async {
+    final offeredId = _reminderId(reminder);
+    await _ignoreFailures(() => _platform.cancel(id: offeredId));
+    final launchedId = _launchedReminderId;
+    _launchedReminderId = null;
+    if (launchedId != null && launchedId != offeredId) {
+      await _ignoreFailures(() => _platform.cancel(id: launchedId));
+    }
+  }
+
+  /// Номер уведомления, которым запустили приложение; null — обычный запуск.
+  int? _launchedReminderId;
 
   /// Детали уведомления для Android и Windows. Звук задаётся отдельно на
   /// каждой платформе: на Android он глушится на уровне самого уведомления

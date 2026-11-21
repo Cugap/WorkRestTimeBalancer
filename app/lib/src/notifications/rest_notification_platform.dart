@@ -48,12 +48,16 @@ abstract interface class RestNotificationPlatform {
   /// Инициализировать плагин с обработчиком нажатия.
   Future<void> initialize({required VoidCallback onOpen});
 
-  /// Снять расписание прошлого запуска.
+  /// Снять раскладку прошлого запуска.
   ///
-  /// [keepShown] — приложение запущено напоминанием: показанное уведомление
-  /// ещё нужно человеку, поэтому снимаются только запланированные
-  /// напоминания, а показанное остаётся.
-  Future<void> clearInherited({required bool keepShown});
+  /// [keepId] — номер показанного напоминания, которым запустили приложение:
+  /// оно ещё нужно человеку, остальные показанные напоминания прошлого запуска
+  /// снимаются. Null — обычный запуск, снимается всё.
+  Future<void> clearPreviousRun({required int? keepId});
+
+  /// Идентификатор показанного напоминания, которым запустили приложение;
+  /// null — обычный запуск.
+  Future<int?> launchedReminderId();
 
   /// Приложение запущено нажатием на уведомление: обработчик такого нажатия
   /// не вызывается, экран отдыха открывается отдельно.
@@ -142,17 +146,55 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
   }
 
   @override
-  Future<void> clearInherited({required bool keepShown}) async {
+  Future<bool> launchedFromNotification() async {
+    final details = await _plugin.getNotificationAppLaunchDetails();
+    return details?.didNotificationLaunchApp ?? false;
+  }
+
+  @override
+  Future<int?> launchedReminderId() async {
+    final details = await _plugin.getNotificationAppLaunchDetails();
+    if (details == null || !details.didNotificationLaunchApp) {
+      return null;
+    }
+    return details.notificationResponse?.id;
+  }
+
+  @override
+  Future<void> clearPreviousRun({required int? keepId}) async {
     if (!_ready) {
       return;
     }
-    if (keepShown && defaultTargetPlatform == TargetPlatform.android) {
-      // Показанное уведомление — то, которым запустили приложение: человек
-      // ещё не ответил на него. Снимаем только запланированное.
-      await cancelAll();
+    if (keepId == null) {
+      await _cancelEverything();
       return;
     }
-    await _cancelEverything();
+    // Унаследованную раскладку снимаем, а из показанных напоминаний оставляем
+    // только то, которым запустили приложение.
+    await cancelAll();
+    await _cancelShownExcept(keepId);
+  }
+
+  Future<void> _cancelShownExcept(int keepId) async {
+    List<ActiveNotification> shown;
+    try {
+      shown = await _plugin.getActiveNotifications();
+    } on PlatformException catch (error) {
+      debugPrint('rest reminders: platform error: $error');
+      return;
+    } on MissingPluginException catch (error) {
+      debugPrint('rest reminders: plugin missing: $error');
+      return;
+    } on UnimplementedError catch (error) {
+      debugPrint('rest reminders: not implemented: $error');
+      return;
+    }
+    for (final notification in shown) {
+      final id = notification.id;
+      if (id != null && id != keepId) {
+        await _cancelOne(id);
+      }
+    }
   }
 
   Future<bool?> _initializePlugin(
@@ -188,12 +230,6 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
     } on UnimplementedError catch (error) {
       debugPrint('rest reminders: not implemented: $error');
     }
-  }
-
-  @override
-  Future<bool> launchedFromNotification() async {
-    final details = await _plugin.getNotificationAppLaunchDetails();
-    return details?.didNotificationLaunchApp ?? false;
   }
 
   @override

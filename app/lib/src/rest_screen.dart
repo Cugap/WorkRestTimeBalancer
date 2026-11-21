@@ -1,10 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 
 import 'clock.dart';
 import 'labels.dart';
+import 'screen_ticker.dart';
 
 /// Полноэкранный экран отдыха. Всё, что он показывает, берётся из снимка ядра:
 /// таймером владеет ядро, поэтому закрытие экрана отдых не прерывает.
@@ -27,50 +26,21 @@ class RestScreen extends StatefulWidget {
   State<RestScreen> createState() => _RestScreenState();
 }
 
-class _RestScreenState extends State<RestScreen> {
+class _RestScreenState extends State<RestScreen> with ScreenTicker<RestScreen> {
   late WorkDaySnapshot _snapshot;
   RejectionReason? _rejection;
-  Timer? _ticker;
-  late final AppLifecycleListener _lifecycle;
 
   @override
   void initState() {
-    super.initState();
     _snapshot = widget.engine.snapshot(widget.clock.now());
-    _startTicker();
-    // Как и главный экран, отдых тикает только пока виден: в фоне приложение
-    // не должно забирать предложение отдыха себе и снимать напоминание.
-    _lifecycle = AppLifecycleListener(
-      onResume: () {
-        _refresh();
-        _startTicker();
-      },
-      onHide: _stopTicker,
-      onPause: _stopTicker,
-    );
-  }
-
-  @override
-  void dispose() {
-    _lifecycle.dispose();
-    _ticker?.cancel();
-    super.dispose();
-  }
-
-  void _startTicker() {
-    _ticker?.cancel();
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
-  }
-
-  void _stopTicker() {
-    _ticker?.cancel();
-    _ticker = null;
+    super.initState();
   }
 
   static bool _isRestPhase(WorkDayPhase phase) =>
       phase == WorkDayPhase.resting || phase == WorkDayPhase.restOffered;
 
-  void _refresh() {
+  @override
+  void refresh() {
     final snapshot = widget.engine.snapshot(widget.clock.now());
     if (!mounted) {
       return;

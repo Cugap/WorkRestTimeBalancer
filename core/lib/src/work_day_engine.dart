@@ -243,8 +243,9 @@ final class WorkDayEngine {
     _offerKind = state.offerKind;
     _currentRestKind = state.currentRestKind;
     _restOffered = state.restOffered;
-    // Показанное до перезапуска уведомление снимается при инициализации
-    // платформы, поэтому восстанавливать его для снятия не нужно.
+    // Напоминание, которым запустили приложение, помнит адаптер: он снимет
+    // его, когда человек ответит. Ядру хранить показанное уведомление после
+    // перезапуска не нужно — предложение создаст догон.
     _openReminder = null;
     _restEndsAt = state.restEndsAt;
     _restStartedAt = state.restStartedAt;

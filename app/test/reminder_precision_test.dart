@@ -48,7 +48,7 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(await notifications.planPrecisionChanged(), isFalse);
-      final writes = platform.cancelAllCalls;
+      final cancelsBefore = platform.cancelAllCalls;
 
       // Человек выдал разрешение в системных настройках и вернулся.
       platform.status = const ReminderStatus(
@@ -59,7 +59,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(platform.cancelAllCalls, greaterThan(writes));
+      expect(platform.cancelAllCalls, greaterThan(cancelsBefore));
       expect(platform.scheduled, isNotEmpty);
       expect(await notifications.planPrecisionChanged(), isFalse);
 
