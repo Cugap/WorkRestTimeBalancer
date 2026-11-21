@@ -126,6 +126,12 @@ final class WorkDayEngine {
   RestKind? _currentRestKind;
 
   bool _restOffered = false;
+
+  /// Напоминание о показанном предложении — ровно то, что ушло в порт при
+  /// предложении. Снимается, когда человек отвечает на отдых в приложении;
+  /// хранится с длительностью и звуком на момент предложения, а не с новыми
+  /// настройками.
+  RestReminder? _openReminder;
   DateTime? _restEndsAt;
   DateTime? _restStartedAt;
 
@@ -237,6 +243,9 @@ final class WorkDayEngine {
     _offerKind = state.offerKind;
     _currentRestKind = state.currentRestKind;
     _restOffered = state.restOffered;
+    // Показанное до перезапуска уведомление снимается при инициализации
+    // платформы, поэтому восстанавливать его для снятия не нужно.
+    _openReminder = null;
     _restEndsAt = state.restEndsAt;
     _restStartedAt = state.restStartedAt;
     _restPlannedDuration = state.restPlannedDuration;
@@ -291,6 +300,7 @@ final class WorkDayEngine {
     _scheduleNextOffer();
     _restOffered = false;
     _currentRestKind = null;
+    _openReminder = null;
     _restEndsAt = null;
     _restStartedAt = null;
     _restExercises = const <Exercise>[];
@@ -313,6 +323,7 @@ final class WorkDayEngine {
       return WorkDayCommandRejected(rejection);
     }
 
+    _dismissOfferedReminder();
     _beginRest(now, _currentRestKind!);
     return const WorkDayCommandAccepted();
   }
@@ -337,6 +348,7 @@ final class WorkDayEngine {
       return const WorkDayCommandRejected(RejectionReason.mealAlreadyTaken);
     }
 
+    _dismissOfferedReminder();
     _beginRest(now, RestKind.meal);
     return const WorkDayCommandAccepted();
   }
@@ -353,6 +365,7 @@ final class WorkDayEngine {
     _restStartedAt = now;
     _restExercises = _exercisesFor(kind);
     _restOffered = false;
+    _openReminder = null;
     _nextRestAt = null;
     _offerKind = null;
     _workIntervalStartedAt = null;
@@ -407,6 +420,7 @@ final class WorkDayEngine {
   /// долга: счётчик короткого отдыха начинается заново, счётчик длинного не
   /// обнуляется, а новый интервал работы начинается с момента пропуска.
   void _skipAt(DateTime at, RestKind kind) {
+    _dismissOfferedReminder();
     _restOffered = false;
     _currentRestKind = null;
     final counters = countersAfterSkip(
@@ -454,6 +468,7 @@ final class WorkDayEngine {
       return const WorkDayCommandRejected(RejectionReason.postponeLimitReached);
     }
 
+    _dismissOfferedReminder();
     _postponesUsed++;
     _restOffered = false;
     final kind = _currentRestKind!;
@@ -556,6 +571,7 @@ final class WorkDayEngine {
       return WorkDayCommandRejected(rejection);
     }
 
+    _dismissOfferedReminder();
     if (_phase == WorkDayPhase.resting) {
       // Отдых прерван завершением дня: в журнале он считается завершённым.
       final restFinished = _restFinishedEvent(
@@ -699,13 +715,42 @@ final class WorkDayEngine {
   /// Раскладки уходят в порт строго по очереди: поздняя не обгоняет раннюю.
   Future<void> _reminderWrites = Future<void>.value();
 
-  void _pushReminderPlan() {
+  /// Снять показанное напоминание о предложенном отдыхе: человек ответил на
+  /// него в приложении. Платформа сама снимает только ещё не показанные
+  /// напоминания, поэтому ей возвращается то же напоминание, что было
+  /// предложено.
+  void _dismissOfferedReminder() {
+    final port = _reminders;
+    final reminder = _openReminder;
+    _openReminder = null;
+    if (port == null || reminder == null) {
+      return;
+    }
+    _reminderWrites = _reminderWrites
+        .then((_) => port.dismiss(reminder))
+        .catchError((Object _) {
+          // Снятие — украшение: сбой платформы не должен ломать ритм.
+        });
+  }
+
+  /// Перепланировать напоминания, даже если раскладка не изменилась.
+  ///
+  /// Разрешение на точные будильники могло появиться уже после того, как
+  /// раскладка была записана неточной. Тогда тот же список точек нужно
+  /// записать заново, иначе настройки говорят «точные», а будильники остаются
+  /// неточными до следующей смены состояния.
+  void replanReminders(DateTime now) {
+    _syncWithClock(now);
+    _pushReminderPlan(force: true);
+  }
+
+  void _pushReminderPlan({bool force = false}) {
     final port = _reminders;
     if (port == null) {
       return;
     }
     final plan = _reminderPlan();
-    if (_sameReminders(plan, _pushedReminders)) {
+    if (!force && _sameReminders(plan, _pushedReminders)) {
       return;
     }
     _reminderWrites = _reminderWrites
@@ -938,6 +983,11 @@ final class WorkDayEngine {
     }
     _restOffered = true;
     _currentRestKind = kind;
+    _openReminder = RestReminder.planned(
+      at: now,
+      kind: kind,
+      settings: _settings,
+    );
     _events.add(
       WorkDayEvent.restOffered(
         now,
@@ -1038,6 +1088,7 @@ final class WorkDayEngine {
     _nextRestAt = null;
     _offerKind = null;
     _restOffered = false;
+    _openReminder = null;
   }
 
   void _closeAtWorkWindowEndIfDue(DateTime now) {
@@ -1049,6 +1100,7 @@ final class WorkDayEngine {
       return;
     }
 
+    _dismissOfferedReminder();
     if (_phase == WorkDayPhase.running) {
       _worked += endsAt.difference(_runningSince!);
       _runningSince = null;
@@ -1077,6 +1129,11 @@ final class WorkDayEngine {
     }
     _restOffered = true;
     _currentRestKind = kind;
+    _openReminder = RestReminder.planned(
+      at: next,
+      kind: kind,
+      settings: _settings,
+    );
     _events.add(
       WorkDayEvent.restOffered(
         next,

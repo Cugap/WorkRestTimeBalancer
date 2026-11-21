@@ -33,12 +33,7 @@ List<RestReminder> planReminders({
     final (at, kind) = point;
     final duration = restDuration(kind, settings);
     reminders.add(
-      RestReminder(
-        at: at,
-        kind: kind,
-        duration: duration,
-        playSound: settings.soundEnabled,
-      ),
+      RestReminder.planned(at: at, kind: kind, settings: settings),
     );
     final next = countersAfterRest(
       counters: (shortAt: shortAt, longAt: longAt, mealAt: mealAt),

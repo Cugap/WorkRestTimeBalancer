@@ -36,6 +36,7 @@ final class FakeRestNotificationPlatform implements RestNotificationPlatform {
   int permissionRequests = 0;
   int exactAlarmRequests = 0;
   int cancelAllCalls = 0;
+  final List<int> cancelled = <int>[];
   final List<SentNotification> scheduled = <SentNotification>[];
   Object? scheduleFailure;
   Object? statusFailure;
@@ -79,7 +80,13 @@ final class FakeRestNotificationPlatform implements RestNotificationPlatform {
   }
 
   @override
-  Future<void> schedule({
+  Future<void> cancel({required int id}) async {
+    cancelled.add(id);
+    scheduled.removeWhere((notification) => notification.id == id);
+  }
+
+  @override
+  Future<bool?> schedule({
     required int id,
     required String title,
     required String body,
@@ -101,5 +108,6 @@ final class FakeRestNotificationPlatform implements RestNotificationPlatform {
         payload: payload,
       ),
     );
+    return status.exactAlarms;
   }
 }

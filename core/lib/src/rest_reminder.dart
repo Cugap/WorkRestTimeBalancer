@@ -1,4 +1,6 @@
 import 'rest_kind.dart';
+import 'rest_kind_profile.dart';
+import 'rhythm_settings.dart';
 
 /// Одна будущая точка отдыха, о которой приложение напомнит заранее.
 ///
@@ -13,6 +15,19 @@ final class RestReminder {
     required this.duration,
     this.playSound = true,
   });
+
+  /// Напоминание о плановой точке отдыха: длительность и звук берутся из
+  /// настроек так же, как их строит раскладка ядра.
+  factory RestReminder.planned({
+    required DateTime at,
+    required RestKind kind,
+    required RhythmSettings settings,
+  }) => RestReminder(
+    at: at,
+    kind: kind,
+    duration: restDuration(kind, settings),
+    playSound: settings.soundEnabled,
+  );
 
   /// Момент, когда отдых будет предложен.
   final DateTime at;

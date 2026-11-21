@@ -14,10 +14,12 @@ const String restReminderPayload = 'rest:offer';
 /// Напоминания средствами платформы: адаптер порта ядра
 /// [RestReminderPort] на `flutter_local_notifications`.
 ///
-/// Ядро присылает раскладку целиком, поэтому адаптер только отменяет прежнюю
-/// и планирует новую. Точность зависит от разрешения на точные будильники: без
-/// него используется неточный режим, а состояние разрешений показывает экран
-/// настроек.
+/// Ядро присылает раскладку целиком, поэтому адаптер заменяет прежнюю
+/// планировку новой и снимает напоминание, на которое человек ответил.
+/// Раскладка запоминает точность, с которой она фактически записана, чтобы её
+/// можно было переписать, когда разрешение на точные будильники выдадут позже.
+/// Без разрешения используется неточный режим, а состояние разрешений
+/// показывает экран настроек.
 final class RestNotifications
     implements RestReminderPort, ReminderStatusSource {
   RestNotifications({RestNotificationPlatform? platform})
@@ -49,26 +51,58 @@ final class RestNotifications
   Future<ReminderStatus> read() =>
       _guarded(_platform.readStatus, fallback: _unknownStatus);
 
+  /// Точность, с которой записана последняя раскладка: её возвращает платформа
+  /// при фактической записи, а не отдельное чтение разрешения. Null — раскладки
+  /// нет или она ещё не записана этим запуском.
+  bool? _plannedExactAlarms;
+
+  /// Текущее разрешение на точные будильники разошлось с той точностью, с
+  /// которой записана раскладка. Значит, её нужно переписать в новом режиме.
+  Future<bool> planPrecisionChanged() async {
+    final planned = _plannedExactAlarms;
+    if (planned == null) {
+      return false;
+    }
+    return (await read()).exactAlarms != planned;
+  }
+
   @override
   Future<ReminderStatus> requestExactAlarms() =>
       _guarded(_platform.requestExactAlarms, fallback: _unknownStatus);
 
   @override
-  Future<void> schedule(RestReminder reminder) => _ignoreFailures(
-    () => _platform.schedule(
-      id: _reminderId(reminder),
-      title: 'Пора отдохнуть',
-      body:
-          '${restKindLabel(reminder.kind)} · '
-          '${formatHoursMinutes(reminder.duration)}',
-      at: reminder.at,
-      details: detailsFor(reminder),
-      payload: restReminderPayload,
-    ),
-  );
+  Future<void> schedule(RestReminder reminder) async {
+    final exact = await _guarded<bool?>(
+      () => _platform.schedule(
+        id: _reminderId(reminder),
+        title: 'Пора отдохнуть',
+        body:
+            '${restKindLabel(reminder.kind)} · '
+            '${formatHoursMinutes(reminder.duration)}',
+        at: reminder.at,
+        details: detailsFor(reminder),
+        payload: restReminderPayload,
+      ),
+      fallback: null,
+    );
+    if (exact != null) {
+      _plannedExactAlarms = exact;
+    }
+  }
 
   @override
-  Future<void> cancelAll() => _ignoreFailures(_platform.cancelAll);
+  Future<void> cancelAll() async {
+    // Новая раскладка ещё не записана: её точность станет известна из ответа
+    // платформы на schedule.
+    _plannedExactAlarms = null;
+    await _ignoreFailures(_platform.cancelAll);
+  }
+
+  /// Снять напоминание, на которое человек ответил в приложении: платформа
+  /// отменяет его по номеру, включая уже показанное уведомление.
+  @override
+  Future<void> dismiss(RestReminder reminder) =>
+      _ignoreFailures(() => _platform.cancel(id: _reminderId(reminder)));
 
   /// Детали уведомления для Android и Windows. Звук задаётся отдельно на
   /// каждой платформе: на Android он глушится на уровне самого уведомления

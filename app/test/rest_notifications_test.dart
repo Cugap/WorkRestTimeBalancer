@@ -103,6 +103,35 @@ void main() {
       expect(platform.scheduled, isEmpty);
     });
 
+    test('снятие отменяет напоминание по номеру и не трогает соседние', () async {
+      await notifications.schedule(_short(_at(9, 25)));
+      await notifications.schedule(_short(_at(9, 53)));
+      final dismissedId = platform.scheduled.first.id;
+
+      await notifications.dismiss(_short(_at(9, 25)));
+
+      expect(platform.cancelled, [dismissedId]);
+      expect(platform.scheduled.single.at, _at(9, 53));
+    });
+
+    test('смена разрешения видна по фактически записанной раскладке', () async {
+      platform.status = const ReminderStatus(
+        exactAlarms: false,
+        notificationsAllowed: true,
+      );
+      // Раскладки ещё нет: переписывать нечего.
+      expect(await notifications.planPrecisionChanged(), isFalse);
+
+      await notifications.schedule(_short(_at(9, 25)));
+      expect(await notifications.planPrecisionChanged(), isFalse);
+
+      platform.status = const ReminderStatus(
+        exactAlarms: true,
+        notificationsAllowed: true,
+      );
+      expect(await notifications.planPrecisionChanged(), isTrue);
+    });
+
     test('разрешения просит и отдаёт та же платформа', () async {
       platform.status = const ReminderStatus(
         exactAlarms: true,

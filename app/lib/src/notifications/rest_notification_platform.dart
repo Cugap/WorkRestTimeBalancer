@@ -58,12 +58,22 @@ abstract interface class RestNotificationPlatform {
 
   Future<ReminderStatus> requestExactAlarms();
 
+  /// Отменить все ещё не показанные напоминания. Показанные остаются, пока
+  /// человек на них не ответит; снять одно показанное — [cancel].
   Future<void> cancelAll();
+
+  /// Снять одно напоминание по номеру: показанное и ещё запланированное.
+  Future<void> cancel({required int id});
 
   /// Запланировать одно напоминание. На Android режим точности выбирается
   /// здесь же: без разрешения на точные будильники напоминание планируется
   /// неточным.
-  Future<void> schedule({
+  ///
+  /// Возвращает точность, с которой напоминание записано: true — точный
+  /// будильник, false — неточный, null — момент уже прошёл и запись не
+  /// понадобилась. На платформах без точных будильников возвращает true —
+  /// так же, как [readStatus].
+  Future<bool?> schedule({
     required int id,
     required String title,
     required String body,
@@ -229,6 +239,31 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
     }
   }
 
+  /// Снять одно напоминание по номеру.
+  ///
+  /// В отличие от [cancelAll], снимает и уже показанное уведомление: человек
+  /// ответил на отдых в приложении, и напоминание о нём больше не актуально.
+  @override
+  Future<void> cancel({required int id}) async {
+    if (!_ready) {
+      return;
+    }
+    _scheduled.remove(id);
+    await _cancelOne(id);
+  }
+
+  Future<void> _cancelOne(int id) async {
+    try {
+      await _plugin.cancel(id: id);
+    } on PlatformException catch (error) {
+      debugPrint('rest reminders: platform error: $error');
+    } on MissingPluginException catch (error) {
+      debugPrint('rest reminders: plugin missing: $error');
+    } on UnimplementedError catch (error) {
+      debugPrint('rest reminders: not implemented: $error');
+    }
+  }
+
   /// Windows: отменить свои напоминания по одному.
   ///
   /// `cancelAll` на Windows снимает и запланированные, и уже доставленные
@@ -239,24 +274,16 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
   /// оставит в центре уведомлений.
   Future<void> _cancelWindows(Map<int, DateTime> scheduled) async {
     final now = DateTime.now();
-    try {
-      for (final entry in scheduled.entries) {
-        if (!entry.value.isAfter(now.add(_dueWindow))) {
-          continue;
-        }
-        await _plugin.cancel(id: entry.key);
+    for (final entry in scheduled.entries) {
+      if (!entry.value.isAfter(now.add(_dueWindow))) {
+        continue;
       }
-    } on PlatformException catch (error) {
-      debugPrint('rest reminders: platform error: $error');
-    } on MissingPluginException catch (error) {
-      debugPrint('rest reminders: plugin missing: $error');
-    } on UnimplementedError catch (error) {
-      debugPrint('rest reminders: not implemented: $error');
+      await _cancelOne(entry.key);
     }
   }
 
   @override
-  Future<void> schedule({
+  Future<bool?> schedule({
     required int id,
     required String title,
     required String body,
@@ -265,14 +292,14 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
     required String payload,
   }) async {
     if (!_ready) {
-      return;
+      return null;
     }
     // Точка отдыха могла наступить между расчётом раскладки и записью в порт:
     // плагин не планирует в прошлое, а прошедшее напоминание уже не нужно.
     if (!at.isAfter(DateTime.now())) {
-      return;
+      return null;
     }
-    final mode = await _scheduleMode();
+    final (:mode, :exact) = await _scheduleMode();
     try {
       await _plan(
         id: id,
@@ -284,6 +311,7 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
         mode: mode,
       );
       _scheduled[id] = at;
+      return exact;
     } on PlatformException catch (error) {
       // Разрешение могли отозвать между проверкой и планированием: неточное
       // напоминание лучше пропущенного.
@@ -298,8 +326,10 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
         mode: AndroidScheduleMode.inexactAllowWhileIdle,
       );
       _scheduled[id] = at;
+      return false;
     } on ArgumentError catch (error) {
       debugPrint('rest reminders: schedule rejected: $error');
+      return null;
     }
   }
 
@@ -323,11 +353,19 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
     payload: payload,
   );
 
-  Future<AndroidScheduleMode> _scheduleMode() async {
-    final exact = await _android?.canScheduleExactNotifications() ?? false;
-    return exact
-        ? AndroidScheduleMode.exactAllowWhileIdle
-        : AndroidScheduleMode.inexactAllowWhileIdle;
+  Future<({AndroidScheduleMode mode, bool exact})> _scheduleMode() async {
+    final android = _android;
+    if (android == null) {
+      // Windows: понятия точных будильников нет, readStatus сообщает «точные».
+      return (mode: AndroidScheduleMode.inexactAllowWhileIdle, exact: true);
+    }
+    final exact = await android.canScheduleExactNotifications() ?? false;
+    return (
+      mode: exact
+          ? AndroidScheduleMode.exactAllowWhileIdle
+          : AndroidScheduleMode.inexactAllowWhileIdle,
+      exact: exact,
+    );
   }
 
   Future<void> _createAndroidChannels() async {

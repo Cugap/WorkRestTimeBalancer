@@ -10,6 +10,7 @@ DateTime _at(int hour, [int minute = 0]) => DateTime(2026, 3, 4, hour, minute);
 /// планирования список равен последней раскладке.
 final class RecordingReminderPort implements RestReminderPort {
   final List<RestReminder> planned = <RestReminder>[];
+  final List<RestReminder> dismissed = <RestReminder>[];
   int cancelAllCalls = 0;
 
   @override
@@ -17,6 +18,9 @@ final class RecordingReminderPort implements RestReminderPort {
     cancelAllCalls++;
     planned.clear();
   }
+
+  @override
+  Future<void> dismiss(RestReminder reminder) async => dismissed.add(reminder);
 
   @override
   Future<void> schedule(RestReminder reminder) async {
@@ -36,6 +40,13 @@ final class FlakyReminderPort implements RestReminderPort {
       throw StateError('platform is unavailable');
     }
     planned.clear();
+  }
+
+  @override
+  Future<void> dismiss(RestReminder reminder) async {
+    if (failing) {
+      throw StateError('platform is unavailable');
+    }
   }
 
   @override
@@ -476,6 +487,34 @@ void main() {
       expect(port.planned, isEmpty);
     });
 
+    test('перепланирование повторяет раскладку при смене разрешения', () async {
+      final desk = ReminderDesk(reminderLimit: 2);
+      final planned = await desk.at(_at(9), WorkDayCommand.start);
+      final cancels = desk.port.cancelAllCalls;
+
+      desk.engine.replanReminders(_at(9, 5));
+      await _planApplied();
+
+      // Раскладка не изменилась, но её нужно записать заново: разрешение на
+      // точные будильники могли выдать уже после первой записи.
+      expect(desk.port.cancelAllCalls, cancels + 1);
+      expect(desk.port.planned, planned);
+    });
+
+    test('перепланирование не меняет течение дня', () async {
+      final desk = ReminderDesk(reminderLimit: 2);
+      await desk.at(_at(9), WorkDayCommand.start);
+      final before = desk.engine.snapshot(_at(9, 5));
+
+      desk.engine.replanReminders(_at(9, 5));
+      await _planApplied();
+
+      final after = desk.engine.snapshot(_at(9, 5));
+      expect(after.phase, before.phase);
+      expect(after.untilNextRest, before.untilNextRest);
+      expect(after.events.length, before.events.length);
+    });
+
     test('процесс выжил, но тиков не было: предложение одно', () async {
       final desk = ReminderDesk(reminderLimit: 2);
       await desk.at(_at(9), WorkDayCommand.start);
@@ -498,6 +537,99 @@ void main() {
       // ней не остаётся.
       expect(desk.port.planned, isEmpty);
       expect(desk.port.cancelAllCalls, greaterThan(1));
+    });
+  });
+
+  group('снятие показанного напоминания', () {
+    /// Рабочий день начат в 9:00, короткий отдых предложен в 9:25.
+    Future<ReminderDesk> offered() async {
+      final desk = ReminderDesk(reminderLimit: 2);
+      await desk.at(_at(9), WorkDayCommand.start);
+      await desk.at(_at(9, 25));
+      return desk;
+    }
+
+    test('начало отдыха снимает напоминание о предложении', () async {
+      final desk = await offered();
+      expect(desk.port.dismissed, isEmpty);
+
+      await desk.at(_at(9, 25), WorkDayCommand.startRest);
+
+      expect(desk.port.dismissed, [_short(_at(9, 25))]);
+    });
+
+    test('отложение снимает показанное напоминание', () async {
+      final desk = await offered();
+
+      await desk.at(_at(9, 25), WorkDayCommand.postponeRest);
+
+      expect(desk.port.dismissed, [_short(_at(9, 25))]);
+    });
+
+    test('пропуск снимает показанное напоминание', () async {
+      final desk = await offered();
+
+      await desk.at(_at(9, 25), WorkDayCommand.skipRest);
+
+      expect(desk.port.dismissed, [_short(_at(9, 25))]);
+    });
+
+    test('ручной обед снимает напоминание о предложенном отдыхе', () async {
+      final desk = await offered();
+
+      await desk.at(_at(9, 25), WorkDayCommand.startMeal);
+
+      expect(desk.port.dismissed, [_short(_at(9, 25))]);
+    });
+
+    test('завершение дня снимает показанное напоминание', () async {
+      final desk = await offered();
+
+      await desk.at(_at(9, 25), WorkDayCommand.finish);
+
+      expect(desk.port.dismissed, [_short(_at(9, 25))]);
+    });
+
+    test('пауза оставляет напоминание: предложение ждёт возобновления', () async {
+      final desk = await offered();
+
+      await desk.at(_at(9, 25), WorkDayCommand.pause);
+
+      expect(desk.port.dismissed, isEmpty);
+    });
+
+    test('снятие помнит длительность предложения, а не новые настройки', () async {
+      final desk = await offered();
+      // Пока предложение на экране, длительность короткого отдыха меняют:
+      // показанное напоминание остаётся прежним, и снимать нужно именно его.
+      await desk.update(
+        _at(9, 26),
+        (settings) => settings.copyWith(
+          shortRestDuration: const Duration(minutes: 5),
+        ),
+      );
+
+      await desk.at(_at(9, 26), WorkDayCommand.skipRest);
+
+      expect(desk.port.dismissed, [_short(_at(9, 25))]);
+    });
+
+    test('конец рабочего окна снимает показанное напоминание', () async {
+      final desk = ReminderDesk(
+        reminderLimit: 2,
+        settings: const RhythmSettings(
+          workStart: ClockTime(9, 0),
+          workEnd: ClockTime(9, 30),
+          shortRestInterval: Duration(minutes: 25),
+        ),
+      );
+      await desk.at(_at(9), WorkDayCommand.start);
+      await desk.at(_at(9, 25));
+      expect(desk.port.dismissed, isEmpty);
+
+      await desk.at(_at(9, 30));
+
+      expect(desk.port.dismissed, [_short(_at(9, 25))]);
     });
   });
 }

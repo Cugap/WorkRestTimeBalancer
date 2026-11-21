@@ -17,9 +17,11 @@ void main() {
 
   setUp(() {
     clock = FakeClock(DateTime(2026, 3, 4, 9));
-    engine = WorkDayEngine();
     platform = FakeRestNotificationPlatform();
     notifications = RestNotifications(platform: platform);
+    // Как в main: ядро получает тот же порт напоминаний, что и оболочка,
+    // иначе раскладка никуда не планируется и тест проверял бы пустоту.
+    engine = WorkDayEngine(reminders: notifications);
   });
 
   Finder key(String value) => find.byKey(ValueKey(value));
@@ -90,6 +92,31 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.byType(RestScreen), findsNothing);
+  });
+
+  testWidgets('ответ на отдых в приложении снимает показанное напоминание', (
+    tester,
+  ) async {
+    // Движок создаётся внутри тела теста: цепочка записей раскладки заводится
+    // в той же зоне, что и поддельные часы теста.
+    engine = WorkDayEngine(reminders: notifications);
+    await pumpApp(tester);
+    await tester.tap(key('command-start'));
+    await tester.pump();
+    final offered = platform.scheduled.firstWhere(
+      (notification) => notification.at == DateTime(2026, 3, 4, 9, 25),
+    );
+
+    clock.advance(const Duration(minutes: 25));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byKey(const ValueKey('phase-restOffered')), findsOneWidget);
+
+    await tester.tap(key('command-startRest'));
+    await tester.pump();
+
+    // Уведомление о предложении уже показано; нажатие «Начать отдых» в
+    // приложении должно снять его, иначе оно остаётся в шторке устаревшим.
+    expect(platform.cancelled, contains(offered.id));
   });
 
   testWidgets('выключенные напоминания не просят разрешений', (tester) async {

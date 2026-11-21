@@ -275,6 +275,9 @@ final class RecordingReminders implements RestReminderPort {
   Future<void> cancelAll() async => planned.clear();
 
   @override
+  Future<void> dismiss(RestReminder reminder) async => planned.remove(reminder);
+
+  @override
   Future<void> schedule(RestReminder reminder) async => planned.add(reminder);
 }
 

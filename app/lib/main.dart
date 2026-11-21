@@ -146,9 +146,25 @@ class _WorkRestAppState extends State<WorkRestApp> {
   }
 
   /// Снимок догоняет время, прошедшее в фоне, и заодно перепланирует
-  /// напоминания: пока приложение было свёрнуто, точки отдыха могли сдвинуться.
+  /// напоминания: пока приложение было свёрнуто, точки отдыха могли сдвинуться,
+  /// а разрешение на точные будильники — появиться.
   void _replanReminders() {
     widget.session.engine.snapshot(_clock.now());
+    unawaited(_replanIfPrecisionChanged());
+  }
+
+  /// Переписать раскладку, если разрешение на точные будильники изменилось:
+  /// иначе настройки говорят «точные», а запланированные будильники остаются
+  /// неточными до следующей смены состояния.
+  Future<void> _replanIfPrecisionChanged() async {
+    final notifications = widget.notifications;
+    if (notifications == null) {
+      return;
+    }
+    if (!await notifications.planPrecisionChanged()) {
+      return;
+    }
+    widget.session.engine.replanReminders(_clock.now());
   }
 
   Future<void> _askPermissions() async {
@@ -162,6 +178,9 @@ class _WorkRestAppState extends State<WorkRestApp> {
     final settings = widget.session.engine.snapshot(_clock.now()).settings;
     if (settings.notificationsEnabled) {
       await notifications.requestPermissions();
+      // Разрешение могли выдать прямо сейчас, и записанная в первом кадре
+      // раскладка тогда неточная — переписываем её в новом режиме.
+      await _replanIfPrecisionChanged();
     }
   }
 
