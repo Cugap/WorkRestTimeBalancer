@@ -32,6 +32,41 @@ flutter run -d windows
 
 Собираются две платформы: Android и Windows. iOS выведен из MVP (см.
 [docs/adr/0006-bez-ios-v-mvp.md](./docs/adr/0006-bez-ios-v-mvp.md)).
+Готовые сборки обеих платформ складываются в одну папку `dist\` в корне
+репозитория.
+
+### Одной командой
+
+Из корня репозитория:
+
+```powershell
+.\build.ps1                               # release: Android + Windows
+.\build.ps1 -Mode debug                   # debug-сборки обеих платформ
+.\build.ps1 -Target android               # только Android
+.\build.ps1 -Target windows               # только Windows
+.\build.ps1 -Target android -SplitPerAbi  # отдельные APK под ABI (release)
+```
+
+Скрипт делает `flutter pub get`, собирает выбранные платформы и перезаписывает
+`dist\android` и `dist\windows`. Для Android он всегда добавляет
+`-P kotlin.incremental=false` — обход известного падения Gradle на инкрементальном
+Kotlin-кеше (см. «Решение проблем»).
+
+Результат:
+
+```text
+dist\
+  android\
+    work_rest_time_balancer-release.apk
+  windows\
+    work_rest_time_balancer\
+      work_rest_time_balancer.exe
+      data\
+      *.dll
+```
+
+Windows-сборку копируйте целиком: `.exe` не работает без соседних `data\` и DLL.
+Папка `dist\` в репозиторий не попадает.
 
 ### Требования
 
@@ -54,6 +89,10 @@ flutter doctor -v
 ### Android
 
 ```powershell
+# из корня репозитория: собрать и положить APK в dist\android
+.\build.ps1 -Target android -Mode debug
+
+# либо вручную из app\
 cd app
 flutter pub get
 
@@ -61,6 +100,7 @@ flutter pub get
 flutter build apk --debug
 
 # готовый файл: app\build\app\outputs\flutter-apk\app-debug.apk
+# (build.ps1 копирует его в dist\android\work_rest_time_balancer-debug.apk)
 ```
 
 Если Gradle падает на инкрементальной компиляции Kotlin (`Could not close
@@ -84,7 +124,7 @@ flutter install -d <device-id>           # установка собранног
 
 # либо через adb; -d добавляется, если на телефоне стоит сборка новее
 adb devices
-adb install -r app\build\app\outputs\flutter-apk\app-debug.apk
+adb install -r dist\android\work_rest_time_balancer-debug.apk
 
 # запуск установленного приложения
 adb shell monkey -p com.cugap.work_rest_time_balancer 1
@@ -139,6 +179,10 @@ flutter build appbundle --release                       # .aab для Google Pla
 ### Windows
 
 ```powershell
+# из корня репозитория: собрать и положить в dist\windows\work_rest_time_balancer
+.\build.ps1 -Target windows
+
+# либо вручную из app\
 cd app
 flutter pub get
 

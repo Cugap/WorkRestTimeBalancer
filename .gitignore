@@ -1,3 +1,9 @@
 # IDE
 .idea/
 *.iml
+
+# Claude Code local settings (may contain API tokens)
+.claude/
+
+# Готовые сборки (build.ps1)
+/dist/
