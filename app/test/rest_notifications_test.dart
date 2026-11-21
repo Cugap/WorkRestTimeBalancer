@@ -42,6 +42,20 @@ void main() {
       expect(await notifications.launchedFromNotification(), isTrue);
     });
 
+    test('запуск из напоминания не снимает показанное уведомление', () async {
+      platform.launched = true;
+
+      await notifications.initialize();
+
+      expect(platform.keptShownInherited, isTrue);
+    });
+
+    test('обычный запуск снимает унаследованное расписание', () async {
+      await notifications.initialize();
+
+      expect(platform.keptShownInherited, isFalse);
+    });
+
     test('текст напоминания собран из вида и длительности отдыха', () async {
       await notifications.schedule(_short(_at(9, 25)));
 

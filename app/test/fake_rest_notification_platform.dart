@@ -36,6 +36,7 @@ final class FakeRestNotificationPlatform implements RestNotificationPlatform {
   int permissionRequests = 0;
   int exactAlarmRequests = 0;
   int cancelAllCalls = 0;
+  bool? keptShownInherited;
   final List<int> cancelled = <int>[];
   final List<SentNotification> scheduled = <SentNotification>[];
   Object? scheduleFailure;
@@ -47,6 +48,11 @@ final class FakeRestNotificationPlatform implements RestNotificationPlatform {
   @override
   Future<void> initialize({required VoidCallback onOpen}) async {
     this.onOpen = onOpen;
+  }
+
+  @override
+  Future<void> clearInherited({required bool keepShown}) async {
+    keptShownInherited = keepShown;
   }
 
   @override

@@ -47,13 +47,26 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
   late WorkDaySnapshot _snapshot;
   RejectionReason? _rejection;
   Timer? _ticker;
+  late final AppLifecycleListener _lifecycle;
 
   @override
   void initState() {
     super.initState();
     _snapshot = widget.engine.snapshot(widget.clock.now());
     _seenEvents = _snapshot.events.length;
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
+    _startTicker();
+    // Тики идут только пока экран виден. В фоне (заблокированный телефон,
+    // свёрнутое окно) приложение не должно само создавать предложение отдыха:
+    // иначе оно снимет ещё не показанное напоминание. В фоне работают только
+    // уведомления, а день догоняется при возврате.
+    _lifecycle = AppLifecycleListener(
+      onResume: () {
+        _refresh();
+        _startTicker();
+      },
+      onHide: _stopTicker,
+      onPause: _stopTicker,
+    );
   }
 
   /// Сколько событий журнала уже сохранено: тик, дописавший событие, просит
@@ -62,11 +75,25 @@ class _WorkDayScreenState extends State<WorkDayScreen> {
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     _ticker?.cancel();
     super.dispose();
   }
 
+  void _startTicker() {
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
+  }
+
+  void _stopTicker() {
+    _ticker?.cancel();
+    _ticker = null;
+  }
+
   void _refresh() {
+    if (!mounted) {
+      return;
+    }
     final snapshot = widget.engine.snapshot(widget.clock.now());
     if (snapshot.events.length != _seenEvents) {
       _seenEvents = snapshot.events.length;

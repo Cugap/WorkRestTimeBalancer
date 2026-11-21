@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:work_rest_core/work_rest_core.dart';
 import 'package:work_rest_time_balancer/main.dart';
+import 'package:work_rest_time_balancer/src/notifications/rest_notifications.dart';
 
 import 'fake_clock.dart';
+import 'fake_rest_notification_platform.dart';
 import 'suspending_clock.dart';
 
 void main() {
@@ -237,5 +239,42 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
 
     expect(find.text('До конца рабочего окна: 7 ч'), findsOneWidget);
+  });
+
+  testWidgets('в фоне экран не забирает предложение и не снимает напоминание', (
+    tester,
+  ) async {
+    // Процесс жив, но экран заблокирован: секундный тикер не должен сам
+    // предлагать отдых и снимать ещё не показанное уведомление.
+    final platform = FakeRestNotificationPlatform();
+    final notifications = RestNotifications(platform: platform);
+    engine = WorkDayEngine(reminders: notifications);
+    await notifications.initialize();
+    await tester.pumpWidget(
+      WorkRestApp(engine: engine, clock: clock, notifications: notifications),
+    );
+    await tester.pump();
+    await tester.tap(command(WorkDayCommand.start));
+    await tester.pump();
+    expect(platform.scheduled, isNotEmpty);
+    final writes = platform.cancelAllCalls;
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    clock.advance(const Duration(minutes: 25));
+    await tester.pump(const Duration(seconds: 2));
+
+    expect(platform.cancelAllCalls, writes);
+    expect(platform.scheduled, isNotEmpty);
+
+    // Вернулись в приложение: день догнался, отдых предложен.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(phase(WorkDayPhase.restOffered), findsOneWidget);
   });
 }

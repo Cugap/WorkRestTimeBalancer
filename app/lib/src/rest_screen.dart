@@ -31,18 +31,40 @@ class _RestScreenState extends State<RestScreen> {
   late WorkDaySnapshot _snapshot;
   RejectionReason? _rejection;
   Timer? _ticker;
+  late final AppLifecycleListener _lifecycle;
 
   @override
   void initState() {
     super.initState();
     _snapshot = widget.engine.snapshot(widget.clock.now());
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
+    _startTicker();
+    // Как и главный экран, отдых тикает только пока виден: в фоне приложение
+    // не должно забирать предложение отдыха себе и снимать напоминание.
+    _lifecycle = AppLifecycleListener(
+      onResume: () {
+        _refresh();
+        _startTicker();
+      },
+      onHide: _stopTicker,
+      onPause: _stopTicker,
+    );
   }
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     _ticker?.cancel();
     super.dispose();
+  }
+
+  void _startTicker() {
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
+  }
+
+  void _stopTicker() {
+    _ticker?.cancel();
+    _ticker = null;
   }
 
   static bool _isRestPhase(WorkDayPhase phase) =>

@@ -32,9 +32,15 @@ final class RestNotifications
 
   /// Инициализация плагина: часовой пояс, настройки платформ и обработчик
   /// нажатия. Без инициализации планировать напоминания нельзя.
+  ///
+  /// Расписание прошлого запуска снимается здесь же. Если приложение запущено
+  /// напоминанием, показанное уведомление не трогается: оно ещё нужно
+  /// человеку и исчезнет, когда он ответит на отдых.
   Future<void> initialize() async {
     tzdata.initializeTimeZones();
     await _platform.initialize(onOpen: () => onOpenRequested?.call());
+    final launched = await launchedFromNotification();
+    await _platform.clearInherited(keepShown: launched);
   }
 
   /// Приложение запущено нажатием на напоминание: обработчик ответа для такого

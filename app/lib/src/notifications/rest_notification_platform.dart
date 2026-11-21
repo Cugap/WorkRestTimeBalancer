@@ -48,6 +48,13 @@ abstract interface class RestNotificationPlatform {
   /// Инициализировать плагин с обработчиком нажатия.
   Future<void> initialize({required VoidCallback onOpen});
 
+  /// Снять расписание прошлого запуска.
+  ///
+  /// [keepShown] — приложение запущено напоминанием: показанное уведомление
+  /// ещё нужно человеку, поэтому снимаются только запланированные
+  /// напоминания, а показанное остаётся.
+  Future<void> clearInherited({required bool keepShown});
+
   /// Приложение запущено нажатием на уведомление: обработчик такого нажатия
   /// не вызывается, экран отдыха открывается отдельно.
   Future<bool> launchedFromNotification();
@@ -131,10 +138,21 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
       debugPrint('rest reminders: platform did not initialize');
       return;
     }
-    // Напоминания прошлого запуска переживают перезапуск (Android и Windows):
-    // снимаем их до того, как ядро пришлёт актуальную раскладку.
-    await _cancelEverything();
     await _createAndroidChannels();
+  }
+
+  @override
+  Future<void> clearInherited({required bool keepShown}) async {
+    if (!_ready) {
+      return;
+    }
+    if (keepShown && defaultTargetPlatform == TargetPlatform.android) {
+      // Показанное уведомление — то, которым запустили приложение: человек
+      // ещё не ответил на него. Снимаем только запланированное.
+      await cancelAll();
+      return;
+    }
+    await _cancelEverything();
   }
 
   Future<bool?> _initializePlugin(
@@ -158,8 +176,8 @@ final class PluginRestNotificationPlatform implements RestNotificationPlatform {
     }
   }
 
-  /// Снять всё, включая уже показанные напоминания: используется при запуске,
-  /// чтобы не унаследовать расписание прошлого запуска.
+  /// Снять всё, включая уже показанные: используется при обычном запуске,
+  /// чтобы не унаследовать устаревшие напоминания прошлого запуска.
   Future<void> _cancelEverything() async {
     try {
       await _plugin.cancelAll();
